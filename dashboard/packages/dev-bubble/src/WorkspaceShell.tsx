@@ -98,31 +98,32 @@ export const WorkspaceShell: FC<WorkspaceShellProps> = ({
       {/* App strip */}
       <div className="ws-strip">
         <span className="ws-strip-label">Apps</span>
+        <div className="ws-strip-scroll">
+          {loading && (
+            <span className="ws-strip-loading">Loading...</span>
+          )}
 
-        {loading && (
-          <span className="ws-strip-loading">Loading...</span>
-        )}
+          {config?.apps.map((app) => (
+            <a
+              key={app.slug}
+              href={app.url}
+              className={`ws-chip${app.slug === currentSlug ? " ws-chip-active" : ""}`}
+              title={app.url}
+            >
+              <span className="ws-chip-icon">
+                {app.slug.charAt(0).toUpperCase()}
+              </span>
+              <span className="ws-chip-name">{app.slug}</span>
+              <span
+                className={`ws-chip-dot ws-chip-dot-${app.status}`}
+              />
+            </a>
+          ))}
 
-        {config?.apps.map((app) => (
-          <a
-            key={app.slug}
-            href={app.url}
-            className={`ws-chip${app.slug === currentSlug ? " ws-chip-active" : ""}`}
-            title={app.url}
-          >
-            <span className="ws-chip-icon">
-              {app.slug.charAt(0).toUpperCase()}
-            </span>
-            <span className="ws-chip-name">{app.slug}</span>
-            <span
-              className={`ws-chip-dot ws-chip-dot-${app.status}`}
-            />
-          </a>
-        ))}
-
-        {config && config.apps.length === 0 && !loading && (
-          <span className="ws-strip-loading">No apps</span>
-        )}
+          {config && config.apps.length === 0 && !loading && (
+            <span className="ws-strip-loading">No apps</span>
+          )}
+        </div>
       </div>
 
       {/* OpenCode iframe */}
@@ -158,17 +159,12 @@ export const WORKSPACE_SHELL_CSS = `
   .ws-strip {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 8px 12px;
+    padding: 8px 0 8px 12px;
     background: #161627;
     border-bottom: 1px solid rgba(255,255,255,0.08);
     flex-shrink: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
+    overflow: hidden;
   }
-  .ws-strip::-webkit-scrollbar { display: none; }
 
   .ws-strip-label {
     color: rgba(255,255,255,0.65);
@@ -176,9 +172,23 @@ export const WORKSPACE_SHELL_CSS = `
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    padding: 0 4px 0 2px;
+    padding: 0 8px 0 2px;
     flex-shrink: 0;
   }
+
+  .ws-strip-scroll {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    flex: 1;
+    min-width: 0;
+    padding-right: 12px;
+  }
+  .ws-strip-scroll::-webkit-scrollbar { display: none; }
 
   .ws-strip-loading {
     color: #8891a8;

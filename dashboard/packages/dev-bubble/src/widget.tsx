@@ -4,10 +4,13 @@
  * Compiled to a self-contained IIFE bundle that includes React+ReactDOM.
  *
  * Behavior modeled after Facebook Messenger chat heads on Android:
- *   - Draggable bubble that snaps to nearest screen edge on release
- *   - Smooth morph transition: bubble scales down as panel slides up from bottom
- *   - Panel is always mounted (iframe never reloads)
- *   - Minimize slides panel down and restores bubble
+ *   - Bubble is ALWAYS visible -- it never disappears
+ *   - Draggable with edge-snapping after release
+ *   - On tap: bubble repositions to top-right, home button slides out to its
+ *     left, chat panel slides down below the bubble row
+ *   - On minimize (tap bubble again): home button slides back, panel closes,
+ *     bubble returns to its previous edge position
+ *   - No header bar inside the panel -- the bubble row IS the header
  *
  * Config via script tag data attributes:
  *   <script src="/dev-bubble.js"
@@ -32,11 +35,16 @@ import { WorkspaceShell, WORKSPACE_SHELL_CSS } from "./WorkspaceShell";
 // ---------------------------------------------------------------------------
 const BUBBLE_SIZE = 60;
 const BUBBLE_MARGIN = 12;
-/** Minimum px movement before a gesture counts as drag (absorbs finger jitter). */
+/** Gap between home button and bubble, and bubble to chat — all equal to BUBBLE_MARGIN. */
+const BUTTON_GAP = BUBBLE_MARGIN;
+/** Minimum px before a gesture counts as drag. */
 const DRAG_THRESHOLD = 10;
-/** Duration for edge-snap and open/close animations (ms). */
-const SNAP_DURATION = 300;
-const PANEL_DURATION = 350;
+/** Duration for bubble reposition animations (ms). */
+const ANIM_DURATION = 350;
+/** Delay before home button starts sliding out (minimal -- starts almost immediately). */
+const HOME_REVEAL_DELAY = 50;
+/** Duration for home button slide animation. */
+const HOME_SLIDE_DURATION = 250;
 
 // ---------------------------------------------------------------------------
 // Config from script tag
@@ -48,8 +56,13 @@ const OPENCODE_URL =
 const DASHBOARD_URL =
   scriptTag?.getAttribute("data-dashboard-url") ?? "/";
 
+/** Bubble docked X position (top-right edge). */
+function dockedX() {
+  return window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN;
+}
+
 // ---------------------------------------------------------------------------
-// Widget-only styles (bubble + panel overlay)
+// Styles
 // ---------------------------------------------------------------------------
 const WIDGET_CSS = `
   #__dev-bubble-root,
@@ -63,7 +76,7 @@ const WIDGET_CSS = `
     z-index: 99999;
   }
 
-  /* ── Bubble button ── */
+  /* ── Bubble ── always visible */
   .db-btn {
     position: fixed;
     width: ${BUBBLE_SIZE}px;
@@ -81,107 +94,101 @@ const WIDGET_CSS = `
     touch-action: none;
     user-select: none;
     padding: 0;
-    /* transition applied dynamically via .db-btn-snapping */
+    outline: none;
     transition: none;
+    /* Entry animation on page load */
+    animation: db-btn-enter ${ANIM_DURATION}ms cubic-bezier(0.25, 1, 0.5, 1) both;
+  }
+  @keyframes db-btn-enter {
+    from { transform: scale(0); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
   }
   .db-btn:active { cursor: grabbing; }
-
-  /* Applied after drag ends for smooth edge-snap */
-  .db-btn-snapping {
-    transition: left ${SNAP_DURATION}ms cubic-bezier(0.25, 1, 0.5, 1),
-                top ${SNAP_DURATION}ms cubic-bezier(0.25, 1, 0.5, 1);
+  .db-btn-animating {
+    transition: left ${ANIM_DURATION}ms cubic-bezier(0.25, 1, 0.5, 1),
+                top ${ANIM_DURATION}ms cubic-bezier(0.25, 1, 0.5, 1),
+                box-shadow ${ANIM_DURATION}ms ease;
   }
-
-  /* Bubble open/close animations */
-  .db-btn-opening {
-    transition: transform ${PANEL_DURATION}ms cubic-bezier(0.25, 1, 0.5, 1),
-                opacity ${PANEL_DURATION}ms ease;
-    transform: scale(0);
-    opacity: 0;
-    pointer-events: none;
+  .db-btn-active {
+    box-shadow: 0 2px 12px rgba(102, 126, 234, 0.3);
+    cursor: pointer;
   }
-  .db-btn-closing {
-    transition: transform ${PANEL_DURATION}ms cubic-bezier(0.25, 1, 0.5, 1),
-                opacity ${PANEL_DURATION}ms ease;
-    transform: scale(1);
-    opacity: 1;
-  }
-
   @media (hover: hover) {
-    .db-btn:not(.db-btn-opening):hover {
-      transform: scale(1.1);
+    .db-btn:hover {
       box-shadow: 0 6px 28px rgba(102, 126, 234, 0.5);
     }
   }
 
-  /* ── Panel (fullscreen overlay) ── */
-  .db-panel {
+  /* ── Home button ── same size as bubble, slides in from behind bubble */
+  .db-home {
     position: fixed;
-    inset: 0;
-    background: #0f1115;
-    z-index: 99998;
-    display: flex;
-    flex-direction: column;
-    transform: translateY(100%);
-    opacity: 0;
-    transition: transform ${PANEL_DURATION}ms cubic-bezier(0.25, 1, 0.5, 1),
-                opacity ${PANEL_DURATION * 0.6}ms ease;
-    will-change: transform, opacity;
-    pointer-events: none;
-  }
-  .db-panel-open {
-    transform: translateY(0);
-    opacity: 1;
-    pointer-events: auto;
-  }
-  .db-panel-hidden {
-    /* Initial state before first open: completely hidden, no transition */
-    visibility: hidden;
-  }
-
-  /* ── Panel header ── */
-  .db-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 16px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    flex-shrink: 0;
-  }
-  .db-header-title {
-    font-size: 16px;
-    font-weight: 600;
-    flex: 1;
-  }
-  .db-header-btn {
-    width: 40px;
-    height: 40px;
+    width: ${BUBBLE_SIZE}px;
+    height: ${BUBBLE_SIZE}px;
     border-radius: 50%;
+    background: linear-gradient(135deg, #2d3436 0%, #636e72 100%);
     border: none;
-    background: rgba(255,255,255,0.2);
-    color: white;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
+    color: white;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    z-index: 99999;
     padding: 0;
-    flex-shrink: 0;
-    transition: background 0.15s;
+    outline: none;
+    /* Start hidden behind the bubble (translated right) */
+    transform: translateX(${BUBBLE_SIZE + BUTTON_GAP}px) scale(0.8);
+    opacity: 0;
+    pointer-events: none;
+    /* Transition position (follows bubble) + reveal transform together */
+    transition: left ${ANIM_DURATION}ms cubic-bezier(0.25, 1, 0.5, 1),
+                top ${ANIM_DURATION}ms cubic-bezier(0.25, 1, 0.5, 1),
+                transform ${HOME_SLIDE_DURATION}ms cubic-bezier(0.25, 1, 0.5, 1),
+                opacity ${HOME_SLIDE_DURATION}ms ease;
   }
-  .db-header-btn:hover { background: rgba(255,255,255,0.3); }
-  .db-header-btn:active { background: rgba(255,255,255,0.4); }
+  .db-home-visible {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+    pointer-events: auto;
+  }
+  @media (hover: hover) {
+    .db-home:hover {
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+    }
+  }
 
-  /* Shell inside panel fills remaining space */
+  /* ── Chat panel ── anchored below the bubble row */
+  .db-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #0f1115;
+    z-index: 99998;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: top ${ANIM_DURATION}ms cubic-bezier(0.25, 1, 0.5, 1),
+                opacity ${ANIM_DURATION}ms ease;
+    will-change: top, opacity;
+  }
+  .db-panel-closed {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .db-panel-open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .db-panel-hidden {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+  }
+
   .db-panel .ws-shell {
     flex: 1;
     min-height: 0;
-  }
-
-  @media (max-width: 768px) {
-    .db-header { padding: 10px 12px; }
-    .db-header-title { font-size: 14px; }
-    .db-header-btn { width: 44px; height: 44px; }
   }
 `;
 
@@ -194,66 +201,116 @@ const IconChat: FC = () => (
   </svg>
 );
 
-const IconMinimize: FC = () => (
-  <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
-    <path d="M19 13H5v-2h14v2z" />
-  </svg>
-);
-
 const IconHome: FC = () => (
-  <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+  <svg viewBox="0 0 24 24" fill="currentColor" width="28" height="28">
     <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
   </svg>
 );
 
 // ---------------------------------------------------------------------------
-// Drag hook with edge-snapping (Messenger-style)
+// Helpers
 // ---------------------------------------------------------------------------
-function useDrag(initialX: number, initialY: number) {
-  const [pos, setPos] = useState({ x: initialX, y: initialY });
-  const [isSnapping, setIsSnapping] = useState(false);
-  const posRef = useRef({ x: initialX, y: initialY });
+function clamp(x: number, y: number) {
+  return {
+    x: Math.max(BUBBLE_MARGIN, Math.min(window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN, x)),
+    y: Math.max(BUBBLE_MARGIN, Math.min(window.innerHeight - BUBBLE_SIZE - BUBBLE_MARGIN, y)),
+  };
+}
+
+function snapX(fromX: number) {
+  const mid = window.innerWidth / 2;
+  return fromX + BUBBLE_SIZE / 2 < mid
+    ? BUBBLE_MARGIN
+    : window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN;
+}
+
+// ---------------------------------------------------------------------------
+// Widget component
+// ---------------------------------------------------------------------------
+const DevBubbleWidget: FC = () => {
+  // ── Bubble position ──
+  const [pos, setPos] = useState(() => clamp(dockedX(), BUBBLE_MARGIN));
+  const posRef = useRef(pos);
+  useEffect(() => { posRef.current = pos; }, [pos]);
+
+  // ── Animation flag ──
+  const [animating, setAnimating] = useState(false);
+  const animTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Panel state ──
+  const [isOpen, setIsOpen] = useState(false);
+  const [hasOpened, setHasOpened] = useState(false);
+
+  // ── Home button visibility (staggered after bubble docks) ──
+  const [homeVisible, setHomeVisible] = useState(false);
+  const homeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Saved position before opening ──
+  const savedPos = useRef<{ x: number; y: number } | null>(null);
+
+  // ── Drag refs ──
   const dragging = useRef(false);
   const hasDragged = useRef(false);
   const offset = useRef({ x: 0, y: 0 });
   const pointerStart = useRef({ x: 0, y: 0 });
-  const snapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => { posRef.current = pos; }, [pos]);
+  // Animate bubble to a position.
+  const animateTo = useCallback((target: { x: number; y: number }, onDone?: () => void) => {
+    if (animTimer.current) clearTimeout(animTimer.current);
+    setAnimating(true);
+    posRef.current = target;
+    setPos(target);
+    animTimer.current = setTimeout(() => {
+      setAnimating(false);
+      animTimer.current = null;
+      onDone?.();
+    }, ANIM_DURATION + 20);
+  }, []);
 
-  const clamp = useCallback((x: number, y: number) => ({
-    x: Math.max(BUBBLE_MARGIN, Math.min(window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN, x)),
-    y: Math.max(BUBBLE_MARGIN, Math.min(window.innerHeight - BUBBLE_SIZE - BUBBLE_MARGIN, y)),
-  }), []);
+  // ── Open ── bubble moves and home button reveals simultaneously.
+  const openPanel = useCallback(() => {
+    savedPos.current = { ...posRef.current };
+    if (!hasOpened) setHasOpened(true);
+    const target = clamp(dockedX(), BUBBLE_MARGIN);
+    setIsOpen(true);
+    animateTo(target);
+    // Reveal home button early -- starts sliding out as bubble is still moving.
+    if (homeTimer.current) clearTimeout(homeTimer.current);
+    homeTimer.current = setTimeout(() => {
+      setHomeVisible(true);
+      homeTimer.current = null;
+    }, HOME_REVEAL_DELAY);
+  }, [hasOpened, animateTo]);
 
-  /** Snap to nearest horizontal edge (left or right). */
+  // ── Close ── everything moves at once, no sequential waiting.
+  const closePanel = useCallback(() => {
+    setHomeVisible(false);
+    setIsOpen(false);
+    if (homeTimer.current) {
+      clearTimeout(homeTimer.current);
+      homeTimer.current = null;
+    }
+    if (savedPos.current) {
+      const snapped = clamp(snapX(savedPos.current.x), savedPos.current.y);
+      animateTo(snapped);
+      savedPos.current = null;
+    }
+  }, [animateTo]);
+
+  // ── Edge-snap after drag ──
   const snapToEdge = useCallback((fromX: number, fromY: number) => {
-    const midpoint = window.innerWidth / 2;
-    const targetX = fromX + BUBBLE_SIZE / 2 < midpoint
-      ? BUBBLE_MARGIN
-      : window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN;
-    const clamped = clamp(targetX, fromY);
+    animateTo(clamp(snapX(fromX), fromY));
+  }, [animateTo]);
 
-    // Enable CSS transition, set target, disable transition after it completes.
-    setIsSnapping(true);
-    posRef.current = clamped;
-    setPos(clamped);
-
-    if (snapTimer.current) clearTimeout(snapTimer.current);
-    snapTimer.current = setTimeout(() => {
-      setIsSnapping(false);
-      snapTimer.current = null;
-    }, SNAP_DURATION + 20);
-  }, [clamp]);
-
+  // ── Pointer handlers ──
   const onPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLButtonElement>) => {
+      if (isOpen) return; // No dragging while open.
       e.preventDefault();
-      // Cancel any in-progress snap so dragging feels immediate.
-      if (snapTimer.current) {
-        clearTimeout(snapTimer.current);
-        snapTimer.current = null;
-        setIsSnapping(false);
+      if (animTimer.current) {
+        clearTimeout(animTimer.current);
+        animTimer.current = null;
+        setAnimating(false);
       }
       dragging.current = true;
       hasDragged.current = false;
@@ -261,7 +318,7 @@ function useDrag(initialX: number, initialY: number) {
       pointerStart.current = { x: e.clientX, y: e.clientY };
       e.currentTarget.setPointerCapture(e.pointerId);
     },
-    [],
+    [isOpen],
   );
 
   const onPointerMove = useCallback(
@@ -276,24 +333,28 @@ function useDrag(initialX: number, initialY: number) {
       posRef.current = next;
       setPos(next);
     },
-    [clamp],
+    [],
   );
 
-  /** Returns `true` if the gesture was a drag, `false` if it was a tap. */
   const onPointerUp = useCallback(
-    (e: ReactPointerEvent<HTMLButtonElement>): boolean => {
-      if (!dragging.current) return false;
+    (e: ReactPointerEvent<HTMLButtonElement>) => {
+      if (isOpen) {
+        e.preventDefault();
+        closePanel();
+        return;
+      }
+      if (!dragging.current) return;
       e.preventDefault();
       const wasDrag = hasDragged.current;
       dragging.current = false;
       hasDragged.current = false;
-      // Always snap to nearest edge after drag, like Messenger.
       if (wasDrag) {
         snapToEdge(posRef.current.x, posRef.current.y);
+      } else {
+        openPanel();
       }
-      return wasDrag;
     },
-    [snapToEdge],
+    [isOpen, closePanel, snapToEdge, openPanel],
   );
 
   const onPointerCancel = useCallback(() => {
@@ -304,130 +365,75 @@ function useDrag(initialX: number, initialY: number) {
     }
   }, [snapToEdge]);
 
-  // Clamp + re-snap on window resize.
+  // ── Resize ──
   useEffect(() => {
     const handler = () => {
-      setPos((p) => {
-        const next = clamp(p.x, p.y);
-        // Re-snap to nearest edge if the bubble ended up floating mid-screen.
-        const midpoint = window.innerWidth / 2;
-        const edgeX = next.x + BUBBLE_SIZE / 2 < midpoint
-          ? BUBBLE_MARGIN
-          : window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN;
-        const snapped = clamp(edgeX, next.y);
-        posRef.current = snapped;
-        return snapped;
-      });
+      if (isOpen) {
+        const target = clamp(dockedX(), BUBBLE_MARGIN);
+        posRef.current = target;
+        setPos(target);
+      } else {
+        setPos((p) => {
+          const snapped = clamp(snapX(p.x), p.y);
+          posRef.current = snapped;
+          return snapped;
+        });
+      }
     };
     window.addEventListener("resize", handler);
     return () => window.removeEventListener("resize", handler);
-  }, [clamp]);
+  }, [isOpen]);
 
-  return { pos, isSnapping, onPointerDown, onPointerMove, onPointerUp, onPointerCancel };
-}
+  // ── Layout calculations ──
+  // Home button sits to the left of the bubble.
+  const homeLeft = pos.x - BUBBLE_SIZE - BUTTON_GAP;
+  const homeTop = pos.y;
+  // Panel anchored below the bubble row — same spacing as all other gaps.
+  const panelTop = pos.y + BUBBLE_SIZE + BUBBLE_MARGIN;
+  const panelTopClosed = window.innerHeight + 10;
 
-// ---------------------------------------------------------------------------
-// Widget component
-// ---------------------------------------------------------------------------
-const DevBubbleWidget: FC = () => {
-  const [isOpen, setIsOpen] = useState(false);
-  /** Tracks whether the panel has ever been opened (to avoid initial flash). */
-  const [hasOpened, setHasOpened] = useState(false);
-  /** Extra class for bubble enter/exit animation. */
-  const [bubbleAnim, setBubbleAnim] = useState<"" | "opening" | "closing">("");
-  const animTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const { pos, isSnapping, onPointerDown, onPointerMove, onPointerUp, onPointerCancel } =
-    useDrag(window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN, BUBBLE_MARGIN);
-
-  // ── Open panel (tap on bubble) ──
-  const openPanel = useCallback(() => {
-    if (!hasOpened) setHasOpened(true);
-    // Animate bubble out (scale down + fade).
-    setBubbleAnim("opening");
-    // Open panel simultaneously.
-    setIsOpen(true);
-    if (animTimer.current) clearTimeout(animTimer.current);
-    animTimer.current = setTimeout(() => {
-      setBubbleAnim("");
-    }, PANEL_DURATION);
-  }, [hasOpened]);
-
-  // ── Close panel (minimize button) ──
-  const closePanel = useCallback(() => {
-    // Start panel close animation.
-    setIsOpen(false);
-    // Animate bubble back in (scale up + fade in).
-    setBubbleAnim("closing");
-    if (animTimer.current) clearTimeout(animTimer.current);
-    animTimer.current = setTimeout(() => {
-      setBubbleAnim("");
-    }, PANEL_DURATION);
-  }, []);
-
-  const handlePointerUp = useCallback(
-    (e: ReactPointerEvent<HTMLButtonElement>) => {
-      const wasDrag = onPointerUp(e);
-      if (!wasDrag) openPanel();
-    },
-    [onPointerUp, openPanel],
-  );
-
-  // Build bubble class list.
+  // ── Classes ──
   let bubbleClass = "db-btn";
-  if (isSnapping) bubbleClass += " db-btn-snapping";
-  if (bubbleAnim === "opening") bubbleClass += " db-btn-opening";
-  if (bubbleAnim === "closing") bubbleClass += " db-btn-closing";
+  if (animating) bubbleClass += " db-btn-animating";
+  if (isOpen) bubbleClass += " db-btn-active";
 
-  // Build panel class list.
   let panelClass = "db-panel";
   if (isOpen) panelClass += " db-panel-open";
-  if (!hasOpened) panelClass += " db-panel-hidden";
+  else if (hasOpened) panelClass += " db-panel-closed";
+  else panelClass += " db-panel-hidden";
 
-  const panelHeader = (
-    <div className="db-header">
+  let homeClass = "db-home";
+  if (homeVisible) homeClass += " db-home-visible";
+
+  return (
+    <>
+      {/* Chat panel — always mounted, no header bar */}
+      <div
+        className={panelClass}
+        style={{ top: isOpen ? panelTop : panelTopClosed }}
+      >
+        <WorkspaceShell opencodeUrl={OPENCODE_URL} />
+      </div>
+
+      {/* Home button — fixed, positioned to bubble's left */}
       <button
-        className="db-header-btn"
+        className={homeClass}
         aria-label="Home"
         title="Back to dashboard"
+        style={{ left: homeLeft, top: homeTop }}
         onClick={() => { window.location.href = DASHBOARD_URL; }}
       >
         <IconHome />
       </button>
-      <span className="db-header-title">Workspace</span>
-      <button
-        className="db-header-btn"
-        aria-label="Minimize"
-        onClick={closePanel}
-      >
-        <IconMinimize />
-      </button>
-    </div>
-  );
 
-  return (
-    <>
-      {/* Panel — always mounted so iframe never reloads */}
-      <div className={panelClass}>
-        <WorkspaceShell
-          opencodeUrl={OPENCODE_URL}
-          header={panelHeader}
-        />
-      </div>
-
-      {/* Floating bubble — always mounted, animated via CSS classes */}
+      {/* Bubble — always visible */}
       <button
         className={bubbleClass}
-        aria-label="Open assistant"
-        style={{
-          left: pos.x,
-          top: pos.y,
-          // Hide bubble visually when panel is fully open and animation done.
-          ...(isOpen && bubbleAnim === "" ? { transform: "scale(0)", opacity: 0, pointerEvents: "none" as const } : {}),
-        }}
+        aria-label={isOpen ? "Minimize chat" : "Open assistant"}
+        style={{ left: pos.x, top: pos.y }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
-        onPointerUp={handlePointerUp}
+        onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
       >
         <IconChat />

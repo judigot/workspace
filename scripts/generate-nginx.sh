@@ -17,6 +17,8 @@ API_BACKEND=${API_BACKEND:-"127.0.0.1:5000"}
 OPENCODE_BACKEND=${OPENCODE_BACKEND:-"127.0.0.1:4097"}
 
 WORKSPACE_ROOT=${WORKSPACE_ROOT:-"/var/www/workspace"}
+DASHBOARD_PORT=${DASHBOARD_PORT:-3200}
+DASHBOARD_API_PORT=${DASHBOARD_API_PORT:-3100}
 VITE_APPS=${VITE_APPS:-"playground:5175 new-app:5176"}
 
 OUTPUT=${1:-"${ROOT_DIR}/dist/nginx.conf"}
@@ -75,6 +77,16 @@ upstream api_backend {
 
 upstream opencode_backend {
     server ${OPENCODE_BACKEND};
+    keepalive 8;
+}
+
+upstream dashboard_backend {
+    server 127.0.0.1:${DASHBOARD_PORT};
+    keepalive 8;
+}
+
+upstream dashboard_api {
+    server 127.0.0.1:${DASHBOARD_API_PORT};
     keepalive 8;
 }
 
@@ -288,11 +300,27 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
-    root ${WORKSPACE_ROOT};
-    index index.html;
+    location /api/ {
+        proxy_pass http://dashboard_api/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
 
     location / {
-        try_files \$uri /index.html;
+        proxy_pass http://dashboard_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \$connection_upgrade;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 86400s;
+        proxy_buffering off;
     }
 }
 EOF

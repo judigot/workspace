@@ -47,15 +47,15 @@ Then it automatically:
 
 | URL | What you see |
 |-----|-------------|
-| `https://judigot.com` | OpenCode web UI (basic auth) |
+| `https://judigot.com` | Dashboard — app grid with live status |
 | `https://opencode.judigot.com` | OpenCode (embeddable, used by the chat bubble) |
-| `https://workspace.judigot.com` | Dashboard — app grid with live status |
+| `https://workspace.judigot.com` | Dashboard (alias for `judigot.com`) |
 
 ---
 
 ### Journey 2: Create an App via OpenCode
 
-Open OpenCode at `judigot.com` (or from the chat bubble inside any app). Ask it to create an app.
+Open OpenCode at `opencode.judigot.com` (or from the chat bubble inside any app). Ask it to create an app.
 
 > "Create a new React app called my-app"
 
@@ -67,7 +67,7 @@ OpenCode (via the `create-app` agent) will:
 
 Result:
 - `https://judigot.com/my-app/` is live
-- Dashboard at `workspace.judigot.com` shows it with a green status dot
+- Dashboard at `judigot.com` shows it with a green status dot
 - Tap the card to open it full-screen with the chat bubble
 
 Full-stack apps work too:
@@ -87,7 +87,7 @@ This is the core workflow. You're on your phone, looking at your app.
 
 ```
 ┌─────────────────────────┐
-│  workspace.judigot.com  │
+│      judigot.com        │
 │                         │
 │  ┌──────┐  ┌─────────┐ │
 │  │  OC  │  │scaffolder│ │
@@ -134,7 +134,7 @@ No editor. No terminal. No laptop. Just your phone and the running app.
 
 ### Journey 4: Open an Existing App
 
-Go to `workspace.judigot.com`. The dashboard shows all registered apps with live status:
+Go to `judigot.com`. The dashboard shows all registered apps with live status:
 
 - **Green dot** = dev server is running
 - **Gray dot** = dev server is stopped
@@ -180,24 +180,26 @@ Reads `.env` for defaults. Skips certs if they already cover all domains. Restar
 ## Architecture
 
 ```
-workspace.judigot.com                    judigot.com
-        │                                     │
-        ▼                                     ▼
-   Nginx (:443, SSL)                     Nginx (:443, SSL)
-        │                                     │
-        ├─ /api/*  → Hono API (:3100)         ├─ /              → OpenCode (:4097)
-        │            reads .env                ├─ /<slug>/       → App frontend
-        │            checks port health        ├─ /<slug>/api/   → App backend (fullstack)
-        │                                     ├─ /<slug>/ws     → App websocket (fullstack+ws)
-        └─ /*      → Dashboard Vite (:3200)   └─ /<slug>/       → App backend (laravel)
-                     App grid + DevBubble
-                                              opencode.judigot.com → OpenCode (iframe-friendly)
+judigot.com (+ workspace.judigot.com alias)
+        │
+        ▼
+   Nginx (:443, SSL)
+        │
+        ├─ /              → Dashboard Vite (:3200)  ← app grid + DevBubble
+        ├─ /api/*         → Dashboard Hono API (:3100)
+        │                   reads .env, checks port health
+        ├─ /<slug>/       → App Vite frontend (frontend/fullstack)
+        ├─ /<slug>/api/   → App backend API (fullstack only)
+        ├─ /<slug>/ws     → App websocket (fullstack+ws)
+        └─ /<slug>/       → App backend (laravel)
+
+opencode.judigot.com → OpenCode (:4097, iframe-friendly, auth injected by nginx)
 ```
 
 **The DevBubble loop:**
 
 ```
-Phone → workspace.judigot.com → tap app → full-screen iframe
+Phone → judigot.com → tap app → full-screen iframe
                                               │
                                     tap bubble → OpenCode (fullscreen)
                                               │
@@ -247,3 +249,4 @@ All config lives in `.env` (created by `init.sh`). See `.env.example` for refere
 | `APPS` | `""` | Registered apps (`slug:type:port[:backend_port[:options]]`) |
 | `DASHBOARD_PORT` | `3200` | Dashboard Vite dev server port |
 | `DASHBOARD_API_PORT` | `3100` | Dashboard Hono API port |
+| `DEFAULT_APP` | `""` | App slug to show on `/` instead of the dashboard grid (e.g. `scaffolder`) |

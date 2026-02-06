@@ -13,6 +13,16 @@ SSL_CERT=${SSL_CERT:-"/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"}
 SSL_KEY=${SSL_KEY:-"/etc/letsencrypt/live/${DOMAIN}/privkey.pem"}
 
 OPENCODE_BACKEND=${OPENCODE_BACKEND:-"127.0.0.1:4097"}
+OPENCODE_SERVER_USERNAME=${OPENCODE_SERVER_USERNAME:-""}
+OPENCODE_SERVER_PASSWORD=${OPENCODE_SERVER_PASSWORD:-""}
+DEFAULT_APP=${DEFAULT_APP:-""}
+
+# Base64-encode credentials for nginx to forward to OpenCode iframe endpoint
+if [ -n "$OPENCODE_SERVER_USERNAME" ] && [ -n "$OPENCODE_SERVER_PASSWORD" ]; then
+  OPENCODE_AUTH_BASIC=$(printf '%s:%s' "$OPENCODE_SERVER_USERNAME" "$OPENCODE_SERVER_PASSWORD" | base64)
+else
+  OPENCODE_AUTH_BASIC=""
+fi
 
 WORKSPACE_ROOT=${WORKSPACE_ROOT:-"/var/www/workspace"}
 DASHBOARD_PORT=${DASHBOARD_PORT:-3200}
@@ -228,7 +238,7 @@ for app in $APPS; do
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-XSS-Protection "1; mode=block" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-        add_header Content-Security-Policy "frame-ancestors https://${WORKSPACE_SUBDOMAIN}" always;
+        add_header Content-Security-Policy "frame-ancestors https://${DOMAIN} https://${WORKSPACE_SUBDOMAIN}" always;
         add_header X-Frame-Options "" always;
         proxy_buffering off;
     }
@@ -301,7 +311,7 @@ EOF
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_set_header X-Forwarded-Port \$server_port;
         proxy_set_header X-Forwarded-Host \$host;
-        add_header Content-Security-Policy "frame-ancestors https://${WORKSPACE_SUBDOMAIN}" always;
+        add_header Content-Security-Policy "frame-ancestors https://${DOMAIN} https://${WORKSPACE_SUBDOMAIN}" always;
         add_header X-Frame-Options "" always;
         proxy_buffering off;
     }
@@ -321,7 +331,7 @@ EOF
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_set_header X-Forwarded-Port \$server_port;
         proxy_set_header X-Forwarded-Host \$host;
-        add_header Content-Security-Policy "frame-ancestors https://${WORKSPACE_SUBDOMAIN}" always;
+        add_header Content-Security-Policy "frame-ancestors https://${DOMAIN} https://${WORKSPACE_SUBDOMAIN}" always;
         add_header X-Frame-Options "" always;
         proxy_buffering off;
     }
@@ -332,8 +342,18 @@ done
 
 cat >> "$OUTPUT" <<EOF
 
+    location /api/ {
+        proxy_pass http://dashboard_api/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
     location / {
-        proxy_pass http://opencode_backend;
+        proxy_pass http://dashboard_backend;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection \$connection_upgrade;
@@ -366,7 +386,7 @@ server {
 
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-    add_header Content-Security-Policy "frame-ancestors https://${WORKSPACE_SUBDOMAIN}" always;
+    add_header Content-Security-Policy "frame-ancestors https://${DOMAIN} https://${WORKSPACE_SUBDOMAIN}" always;
 
     location / {
         proxy_pass http://opencode_backend;
@@ -380,6 +400,16 @@ server {
         proxy_read_timeout 86400s;
         proxy_buffering off;
         proxy_hide_header X-Frame-Options;
+        proxy_hide_header WWW-Authenticate;
+EOF
+
+  if [ -n "$OPENCODE_AUTH_BASIC" ]; then
+    cat >> "$OUTPUT" <<EOF
+        proxy_set_header Authorization "Basic ${OPENCODE_AUTH_BASIC}";
+EOF
+  fi
+
+  cat >> "$OUTPUT" <<EOF
     }
 }
 

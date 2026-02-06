@@ -22,10 +22,10 @@ This triggers because fullstack apps need both frontend and backend ports plus o
 
 <example>
 Context: User reports a slug still loads OpenCode UI instead of their app.
-user: "It redirects to opencode UI"
+user: "It redirects to the dashboard instead of my app"
 assistant: "I'll verify APPS in .env matches the deployed nginx config and redeploy if needed."
 <commentary>
-This triggers because the catch-all location / proxies to OpenCode, so a missing slug config causes this.
+This triggers because a missing slug config means the request falls through to the Dashboard catch-all instead of the app.
 </commentary>
 </example>
 
@@ -40,10 +40,10 @@ This triggers because port conflicts are a common ops issue on this workspace.
 
 <example>
 Context: The dashboard is down.
-user: "workspace.judigot.com is broken"
+user: "judigot.com is broken" or "workspace.judigot.com is broken"
 assistant: "I'll check if the dashboard Vite and API servers are running, restart them if needed, and verify nginx is proxying correctly."
 <commentary>
-This triggers because the dashboard has two processes (API on 3100, Vite on 3200) and nginx proxies to them.
+This triggers because the dashboard (served at judigot.com, with workspace.judigot.com as alias) has two processes (API on 3100, Vite on 3200) and nginx proxies to them.
 </commentary>
 </example>
 
@@ -115,18 +115,15 @@ This is a **single EC2 instance** running Ubuntu. Everything runs on one box:
 ```
 Browser → Nginx (:443 SSL)
   │
-  ├─ judigot.com
-  │   ├─ /                    → OpenCode (:4097)  ← catch-all
+  ├─ judigot.com (+ workspace.judigot.com alias)
+  │   ├─ /                    → Dashboard Vite (:3200)  ← app grid + DevBubble
+  │   ├─ /api/*               → Dashboard Hono API (:3100)
   │   ├─ /<slug>/             → App Vite frontend (frontend/fullstack)
   │   ├─ /<slug>/__vite_hmr   → Vite HMR websocket
   │   ├─ /<slug>/api/         → App backend API (fullstack only)
   │   └─ /<slug>/ws           → App websocket (fullstack + ws option)
   │
-  ├─ opencode.judigot.com     → OpenCode (:4097, iframe-friendly, no X-Frame-Options)
-  │
-  └─ workspace.judigot.com
-      ├─ /api/*               → Dashboard Hono API (:3100)
-      └─ /*                   → Dashboard Vite (:3200)
+  └─ opencode.judigot.com     → OpenCode (:4097, iframe-friendly, auth injected by nginx)
 ```
 
 ## Services and Ports
@@ -254,9 +251,9 @@ sudo journalctl -u nginx -n 20   # Recent logs
 
 ```sh
 # All endpoints
-curl -s -o /dev/null -w "%{http_code}" https://judigot.com/                 # 401 (OpenCode, basic auth)
-curl -s -o /dev/null -w "%{http_code}" https://opencode.judigot.com/        # 401 (OpenCode, basic auth)
-curl -s -o /dev/null -w "%{http_code}" https://workspace.judigot.com/       # 200 (Dashboard)
+curl -s -o /dev/null -w "%{http_code}" https://judigot.com/                 # 200 (Dashboard)
+curl -s -o /dev/null -w "%{http_code}" https://opencode.judigot.com/        # 200 (OpenCode, auth injected by nginx)
+curl -s -o /dev/null -w "%{http_code}" https://workspace.judigot.com/       # 200 (Dashboard, alias)
 curl -s http://localhost:3100/api/apps | python3 -m json.tool               # JSON with app list
 
 # Per-app (replace slug)
@@ -277,6 +274,7 @@ All configuration lives in `~/workspace/.env`. Key variables:
 | `APPS` | `""` | Registered apps: `slug:type:port[:backend_port[:options]]` |
 | `DASHBOARD_PORT` | `3200` | Dashboard Vite port |
 | `DASHBOARD_API_PORT` | `3100` | Dashboard API port |
+| `DEFAULT_APP` | `""` | App slug to show on `/` instead of the dashboard grid (e.g. `scaffolder`) |
 
 The Dashboard API (`~/workspace/dashboard/apps/workspace/src/server/app.ts`) reads this file live on every `/api/apps` request — no restart needed when apps change.
 
@@ -379,7 +377,7 @@ The backend must serve routes under `/api/` — nginx strips the `/<slug>/api/` 
 
 ### Iframe embedding
 
-Apps loaded through the dashboard are displayed inside iframes. The nginx config for `opencode.judigot.com` removes `X-Frame-Options` and adds `Content-Security-Policy: frame-ancestors` to allow embedding from `workspace.judigot.com`. If a new app refuses to load in the iframe, check its response headers — it may be sending `X-Frame-Options: DENY`.
+Apps loaded through the dashboard are displayed inside iframes. The nginx config for `opencode.judigot.com` removes `X-Frame-Options` and adds `Content-Security-Policy: frame-ancestors` to allow embedding from `judigot.com` (and alias `workspace.judigot.com`). If a new app refuses to load in the iframe, check its response headers — it may be sending `X-Frame-Options: DENY`.
 
 ## Dashboard Architecture
 
@@ -439,9 +437,9 @@ kill <pid>
 
 If `npm run dev` shows "Port 3200 is in use, trying another one..." — Vite picked a different port but nginx still proxies to 3200. You MUST kill the stale process and restart on 3200.
 
-### Slug loads OpenCode instead of the app
+### Slug loads Dashboard instead of the app
 
-The catch-all `location /` proxies to OpenCode. If a slug isn't in the generated nginx config, it falls through.
+The catch-all `location /` proxies to the Dashboard. If a slug isn't in the generated nginx config, it falls through.
 
 1. Check `.env`: `grep APPS ~/workspace/.env`
 2. Check deployed config: `grep 'location /my-app' /etc/nginx/sites-available/default`
@@ -514,6 +512,7 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:3200     # Dashboard Vit
 curl -s -o /dev/null -w "%{http_code}" http://localhost:3100/api/apps  # Dashboard API
 
 # 5. Can we reach through nginx?
+curl -s -o /dev/null -w "%{http_code}" https://judigot.com/
 curl -s -o /dev/null -w "%{http_code}" https://judigot.com/
 curl -s -o /dev/null -w "%{http_code}" https://workspace.judigot.com/
 

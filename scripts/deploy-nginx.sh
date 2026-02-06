@@ -40,6 +40,12 @@ fi
 
 sudo cp "${OUTPUT_PATH}" "${TARGET_PATH}"
 sudo nginx -t
-sudo systemctl reload nginx
+sudo systemctl enable nginx >/dev/null 2>&1 || true
+
+if sudo systemctl is-active --quiet nginx; then
+  sudo systemctl reload nginx
+else
+  sudo systemctl start nginx
+fi
 
 echo "Deployed nginx config to ${TARGET_PATH}"

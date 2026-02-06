@@ -154,6 +154,12 @@ VITE_APPS=${VITE_APPS:-""}
 WORKSPACE_ROOT=${WORKSPACE_ROOT:-"/var/www/workspace"}
 CERTBOT_EMAIL=${CERTBOT_EMAIL:-""}
 
+# Use a non-interactive certbot contact by default to avoid setup prompts.
+# Override by setting CERTBOT_EMAIL in .env before running init.sh.
+if [ -z "${CERTBOT_EMAIL}" ]; then
+  CERTBOT_EMAIL="admin@${DOMAIN}"
+fi
+
 # Write .env
 cat > "$ENV_FILE" <<EOF
 DOMAIN=${DOMAIN}
@@ -196,27 +202,17 @@ if [ -f "$SSL_CERT" ] && [ -f "$SSL_KEY" ]; then
   else
     warn "Certs exist but may not cover all domains — expanding..."
     sudo systemctl stop nginx 2>/dev/null || true
-    if [ -n "$CERTBOT_EMAIL" ]; then
-      sudo certbot certonly --standalone --expand \
-        -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" -d "$WORKSPACE_SUBDOMAIN" \
-        --non-interactive --agree-tos -m "$CERTBOT_EMAIL"
-    else
-      sudo certbot certonly --standalone --expand \
-        -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" -d "$WORKSPACE_SUBDOMAIN"
-    fi
+    sudo certbot certonly --standalone --expand \
+      -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" -d "$WORKSPACE_SUBDOMAIN" \
+      --non-interactive --agree-tos --no-eff-email -m "$CERTBOT_EMAIL"
     ok "Certs expanded"
   fi
 else
   warn "No certs found — issuing via certbot..."
   sudo systemctl stop nginx 2>/dev/null || true
-  if [ -n "$CERTBOT_EMAIL" ]; then
-    sudo certbot certonly --standalone \
-      -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" -d "$WORKSPACE_SUBDOMAIN" \
-      --non-interactive --agree-tos -m "$CERTBOT_EMAIL"
-  else
-    sudo certbot certonly --standalone \
-      -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" -d "$WORKSPACE_SUBDOMAIN"
-  fi
+  sudo certbot certonly --standalone \
+    -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" -d "$WORKSPACE_SUBDOMAIN" \
+    --non-interactive --agree-tos --no-eff-email -m "$CERTBOT_EMAIL"
   ok "Certs issued"
 fi
 

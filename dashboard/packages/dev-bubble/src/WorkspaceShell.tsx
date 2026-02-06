@@ -104,12 +104,10 @@ export const WorkspaceShell: FC<WorkspaceShellProps> = ({
         )}
 
         {config?.apps.map((app) => (
-          <button
+          <a
             key={app.slug}
+            href={app.url}
             className={`ws-chip${app.slug === currentSlug ? " ws-chip-active" : ""}`}
-            onClick={() => {
-              window.location.href = app.url;
-            }}
             title={app.url}
           >
             <span className="ws-chip-icon">
@@ -119,7 +117,7 @@ export const WorkspaceShell: FC<WorkspaceShellProps> = ({
             <span
               className={`ws-chip-dot ws-chip-dot-${app.status}`}
             />
-          </button>
+          </a>
         ))}
 
         {config && config.apps.length === 0 && !loading && (
@@ -189,7 +187,7 @@ export const WORKSPACE_SHELL_CSS = `
     white-space: nowrap;
   }
 
-  /* ── App chip ── */
+  /* ── App chip (semantic <a> link — supports long-press "open in new tab") ── */
   .ws-chip {
     display: flex;
     align-items: center;
@@ -208,6 +206,7 @@ export const WORKSPACE_SHELL_CSS = `
     font-family: inherit;
     transition: background 0.15s, border-color 0.15s, color 0.15s;
     -webkit-tap-highlight-color: transparent;
+    text-decoration: none;
   }
   .ws-chip:active {
     background: rgba(255,255,255,0.12);

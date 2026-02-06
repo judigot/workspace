@@ -23,6 +23,11 @@ import { WorkspaceShell, WORKSPACE_SHELL_CSS } from "./WorkspaceShell";
 
 const BUBBLE_SIZE = 60;
 const BUBBLE_MARGIN = 12;
+/**
+ * Minimum distance (px) the pointer must travel before a gesture counts as a
+ * drag rather than a tap.  10 px absorbs natural finger jitter on touch screens.
+ */
+const DRAG_THRESHOLD = 10;
 
 // ---------------------------------------------------------------------------
 // Config from script tag
@@ -161,54 +166,85 @@ const IconHome: FC = () => (
 // ---------------------------------------------------------------------------
 function useDrag(initialX: number, initialY: number) {
   const [pos, setPos] = useState({ x: initialX, y: initialY });
+  // All mutable drag state lives in refs so pointer handlers never read stale values.
+  const posRef = useRef({ x: initialX, y: initialY });
   const dragging = useRef(false);
   const hasDragged = useRef(false);
   const offset = useRef({ x: 0, y: 0 });
+  const pointerStart = useRef({ x: 0, y: 0 });
+
+  // Keep the ref in sync whenever React state changes (e.g. resize clamp).
+  useEffect(() => { posRef.current = pos; }, [pos]);
 
   const onPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLButtonElement>) => {
+      e.preventDefault();
       dragging.current = true;
       hasDragged.current = false;
-      offset.current = { x: e.clientX - pos.x, y: e.clientY - pos.y };
+      // Read the *latest* position from the ref, not from a stale closure.
+      offset.current = { x: e.clientX - posRef.current.x, y: e.clientY - posRef.current.y };
+      pointerStart.current = { x: e.clientX, y: e.clientY };
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [pos],
+    [],
   );
 
   const onPointerMove = useCallback(
     (e: ReactPointerEvent<HTMLButtonElement>) => {
       if (!dragging.current) return;
+      e.preventDefault();
+      const dx = e.clientX - pointerStart.current.x;
+      const dy = e.clientY - pointerStart.current.y;
+      if (!hasDragged.current && dx * dx + dy * dy < DRAG_THRESHOLD * DRAG_THRESHOLD) return;
       hasDragged.current = true;
-      setPos({
+      const next = {
         x: Math.max(BUBBLE_MARGIN, Math.min(window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN, e.clientX - offset.current.x)),
         y: Math.max(BUBBLE_MARGIN, Math.min(window.innerHeight - BUBBLE_SIZE - BUBBLE_MARGIN, e.clientY - offset.current.y)),
-      });
+      };
+      posRef.current = next;
+      setPos(next);
     },
     [],
   );
 
-  const onPointerUp = useCallback(() => {
+  const onPointerUp = useCallback(
+    (e: ReactPointerEvent<HTMLButtonElement>) => {
+      if (!dragging.current) return;
+      e.preventDefault();
+      dragging.current = false;
+    },
+    [],
+  );
+
+  const onPointerCancel = useCallback(() => {
     dragging.current = false;
+    hasDragged.current = false;
   }, []);
 
   useEffect(() => {
     const handler = () =>
-      setPos((p) => ({
-        x: Math.max(BUBBLE_MARGIN, Math.min(p.x, window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN)),
-        y: Math.max(BUBBLE_MARGIN, Math.min(p.y, window.innerHeight - BUBBLE_SIZE - BUBBLE_MARGIN)),
-      }));
+      setPos((p) => {
+        const next = {
+          x: Math.max(BUBBLE_MARGIN, Math.min(p.x, window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN)),
+          y: Math.max(BUBBLE_MARGIN, Math.min(p.y, window.innerHeight - BUBBLE_SIZE - BUBBLE_MARGIN)),
+        };
+        posRef.current = next;
+        return next;
+      });
     window.addEventListener("resize", handler);
     return () => window.removeEventListener("resize", handler);
   }, []);
 
   const snapToTopRight = useCallback(() => {
-    setPos({
+    const next = {
       x: window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN,
       y: BUBBLE_MARGIN,
-    });
+    };
+    posRef.current = next;
+    setPos(next);
   }, []);
 
-  return { pos, hasDragged, onPointerDown, onPointerMove, onPointerUp, snapToTopRight };
+  return { pos, hasDragged, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, snapToTopRight };
 }
 
 // ---------------------------------------------------------------------------
@@ -216,12 +252,18 @@ function useDrag(initialX: number, initialY: number) {
 // ---------------------------------------------------------------------------
 const DevBubbleWidget: FC = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const { pos, hasDragged, onPointerDown, onPointerMove, onPointerUp, snapToTopRight } =
+  const { pos, hasDragged, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, snapToTopRight } =
     useDrag(window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN, BUBBLE_MARGIN);
 
-  const handleBubbleClick = useCallback(() => {
-    if (!hasDragged.current) setIsOpen(true);
-  }, [hasDragged]);
+  const handlePointerUp = useCallback(
+    (e: ReactPointerEvent<HTMLButtonElement>) => {
+      const wasDrag = hasDragged.current;
+      onPointerUp(e);
+      // Open only on tap, not after a drag.
+      if (!wasDrag) setIsOpen(true);
+    },
+    [hasDragged, onPointerUp],
+  );
 
   const panelHeader = (
     <div className="db-header">
@@ -263,10 +305,10 @@ const DevBubbleWidget: FC = () => {
           className="db-btn"
           aria-label="Open assistant"
           style={{ left: pos.x, top: pos.y }}
-          onClick={handleBubbleClick}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={onPointerCancel}
         >
           <IconChat />
         </button>

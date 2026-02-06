@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, type PointerEvent as ReactPointerEvent } from "react";
 import styles from "./DevBubble.module.css";
 
 export interface IBubbleApp {
@@ -29,6 +29,16 @@ interface IPosition {
   y: number;
 }
 
+const BUBBLE_SIZE = 60;
+const BUBBLE_MARGIN = 24;
+/**
+ * Minimum distance (px) the pointer must travel before a gesture counts as a
+ * drag rather than a tap.  10 px is generous enough to absorb the natural
+ * jitter of a finger on a touch screen while still feeling responsive for
+ * intentional drags.
+ */
+const DRAG_THRESHOLD = 10;
+
 export function DevBubble({
   url = "https://opencode.judigot.com",
   appUrl = "",
@@ -41,103 +51,99 @@ export function DevBubble({
   const [isOpen, setIsOpen] = useState(false);
   const [position, setPosition] = useState<IPosition>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState<IPosition>({ x: 0, y: 0 });
-  const [hasDragged, setHasDragged] = useState(false);
   const [urlInput, setUrlInput] = useState(appUrl);
-  const bubbleRef = useRef<HTMLButtonElement>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Refs for pointer / drag state ──
+  // Using refs (not state) so pointer handlers never suffer from stale closures.
+  const posRef = useRef<IPosition>(position);
+  const draggingRef = useRef(false);
+  const hasDraggedRef = useRef(false);
+  const offsetRef = useRef<IPosition>({ x: 0, y: 0 });
+  const startRef = useRef<IPosition>({ x: 0, y: 0 });
+
+  // Keep the ref in sync whenever state changes (resize handler, etc.)
+  useEffect(() => {
+    posRef.current = position;
+  }, [position]);
 
   // Sync URL bar when app changes externally
   useEffect(() => {
     setUrlInput(appUrl);
   }, [appUrl]);
 
+  // Set initial position + clamp on resize
   useEffect(() => {
-    const updatePosition = () => {
+    const update = () => {
       setPosition({
-        x: window.innerWidth - 84,
-        y: window.innerHeight - 84,
+        x: window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN,
+        y: window.innerHeight - BUBBLE_SIZE - BUBBLE_MARGIN,
       });
     };
-    updatePosition();
-    window.addEventListener("resize", updatePosition);
-    return () => {
-      window.removeEventListener("resize", updatePosition);
-    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
   }, []);
 
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
+  // ── Pointer handlers ──
+  const handlePointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLButtonElement>) => {
       if (isOpen) return;
+      // Prevent browser defaults: scroll, long-press menu, synthetic mouse events.
+      e.preventDefault();
+      draggingRef.current = true;
+      hasDraggedRef.current = false;
+      // Always read the *latest* position from the ref, never from a stale
+      // closure capture of `position` state.
+      offsetRef.current = {
+        x: e.clientX - posRef.current.x,
+        y: e.clientY - posRef.current.y,
+      };
+      startRef.current = { x: e.clientX, y: e.clientY };
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
       setIsDragging(true);
-      setHasDragged(false);
-      setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
     },
-    [isOpen, position],
+    [isOpen],
   );
 
-  const handleMouseMove = useCallback(
-    (e: MouseEvent) => {
-      if (!isDragging) return;
-      setHasDragged(true);
-      setPosition({
-        x: Math.max(0, Math.min(window.innerWidth - 60, e.clientX - dragStart.x)),
-        y: Math.max(0, Math.min(window.innerHeight - 60, e.clientY - dragStart.y)),
-      });
+  const handlePointerMove = useCallback(
+    (e: ReactPointerEvent<HTMLButtonElement>) => {
+      if (!draggingRef.current) return;
+      e.preventDefault();
+      const dx = e.clientX - startRef.current.x;
+      const dy = e.clientY - startRef.current.y;
+      if (!hasDraggedRef.current && dx * dx + dy * dy < DRAG_THRESHOLD * DRAG_THRESHOLD) return;
+      hasDraggedRef.current = true;
+      const next: IPosition = {
+        x: Math.max(BUBBLE_MARGIN, Math.min(window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN, e.clientX - offsetRef.current.x)),
+        y: Math.max(BUBBLE_MARGIN, Math.min(window.innerHeight - BUBBLE_SIZE - BUBBLE_MARGIN, e.clientY - offsetRef.current.y)),
+      };
+      posRef.current = next;
+      setPosition(next);
     },
-    [isDragging, dragStart],
+    [],
   );
 
-  const handleMouseUp = useCallback(() => setIsDragging(false), []);
-
-  const handleTouchStart = useCallback(
-    (e: React.TouchEvent) => {
-      if (isOpen) return;
-      const touch = e.touches[0];
-      if (touch) {
-        setIsDragging(true);
-        setHasDragged(false);
-        setDragStart({ x: touch.clientX - position.x, y: touch.clientY - position.y });
+  const handlePointerUp = useCallback(
+    (e: ReactPointerEvent<HTMLButtonElement>) => {
+      if (!draggingRef.current) return;
+      e.preventDefault();
+      const wasDrag = hasDraggedRef.current;
+      draggingRef.current = false;
+      hasDraggedRef.current = false;
+      setIsDragging(false);
+      if (!wasDrag) {
+        setIsOpen(true);
       }
     },
-    [isOpen, position],
+    [],
   );
 
-  const handleTouchMove = useCallback(
-    (e: TouchEvent) => {
-      if (!isDragging) return;
-      const touch = e.touches[0];
-      if (touch) {
-        setHasDragged(true);
-        setPosition({
-          x: Math.max(0, Math.min(window.innerWidth - 60, touch.clientX - dragStart.x)),
-          y: Math.max(0, Math.min(window.innerHeight - 60, touch.clientY - dragStart.y)),
-        });
-      }
-    },
-    [isDragging, dragStart],
-  );
-
-  const handleTouchEnd = useCallback(() => setIsDragging(false), []);
-
-  useEffect(() => {
-    if (isDragging) {
-      window.addEventListener("mousemove", handleMouseMove);
-      window.addEventListener("mouseup", handleMouseUp);
-      window.addEventListener("touchmove", handleTouchMove);
-      window.addEventListener("touchend", handleTouchEnd);
-    }
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-      window.removeEventListener("touchmove", handleTouchMove);
-      window.removeEventListener("touchend", handleTouchEnd);
-    };
-  }, [isDragging, handleMouseMove, handleMouseUp, handleTouchMove, handleTouchEnd]);
-
-  const handleClick = () => {
-    if (!hasDragged) setIsOpen(!isOpen);
-  };
+  const handlePointerCancel = useCallback(() => {
+    draggingRef.current = false;
+    hasDraggedRef.current = false;
+    setIsDragging(false);
+  }, []);
 
   const showNav = apps.length > 0 || onGoHome !== undefined;
 
@@ -161,11 +167,13 @@ export function DevBubble({
 
         {/* Workspace nav */}
         {showNav && (
-          <div className={styles.nav}>
+          <nav className={styles.nav}>
             {onGoHome !== undefined && (
-              <button
+              <a
+                href="/"
                 className={`${styles.navItem} ${activeSlug === null ? styles.navActive : ""}`}
-                onClick={() => {
+                onClick={(e) => {
+                  e.preventDefault();
                   onGoHome();
                   setIsOpen(false);
                 }}
@@ -176,13 +184,15 @@ export function DevBubble({
                   </svg>
                 </span>
                 <span>Home</span>
-              </button>
+              </a>
             )}
             {apps.map((app) => (
-              <button
+              <a
                 key={app.slug}
+                href={app.url}
                 className={`${styles.navItem} ${app.slug === activeSlug ? styles.navActive : ""}`}
-                onClick={() => {
+                onClick={(e) => {
+                  e.preventDefault();
                   onSelectApp?.(app);
                   setIsOpen(false);
                 }}
@@ -191,9 +201,9 @@ export function DevBubble({
                   className={`${styles.navDot} ${app.status === "up" ? styles.navDotUp : styles.navDotDown}`}
                 />
                 <span>{app.slug}</span>
-              </button>
+              </a>
             ))}
-          </div>
+          </nav>
         )}
 
         {/* URL bar for app navigation */}
@@ -243,15 +253,15 @@ export function DevBubble({
 
       {!isOpen && (
         <button
-          ref={bubbleRef}
           className={`${styles.bubble} ${isDragging ? styles.dragging : ""}`}
           style={{
             left: `${String(position.x)}px`,
             top: `${String(position.y)}px`,
           }}
-          onMouseDown={handleMouseDown}
-          onTouchStart={handleTouchStart}
-          onClick={handleClick}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
           aria-label="Open assistant"
         >
           <svg viewBox="0 0 24 24" fill="currentColor" width="28" height="28">

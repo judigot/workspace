@@ -259,6 +259,14 @@ EOF
 
 sudo systemctl daemon-reload
 sudo systemctl enable opencode >/dev/null 2>&1
+
+# Kill any opencode process holding the port (e.g. manual runs outside systemd)
+if PID=$(sudo lsof -ti :"${OPENCODE_PORT}" 2>/dev/null); then
+  warn "Killing existing process on port ${OPENCODE_PORT} (PID: ${PID})"
+  sudo kill -9 $PID 2>/dev/null || true
+  sleep 1
+fi
+
 sudo systemctl restart opencode
 
 # Wait for opencode to be ready

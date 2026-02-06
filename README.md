@@ -220,7 +220,7 @@ Phone → judigot.com → tap app card → browser navigates to /scaffolder/
                                       app loads as native page
                                       DevBubble widget injected by nginx
                                                 │
-                                      tap bubble → OpenCode panel (fullscreen)
+                                      tap bubble → panel with Apps + OpenCode tabs
                                                 │
                                       "change X" → AI edits code
                                                 │

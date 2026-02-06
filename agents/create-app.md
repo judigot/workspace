@@ -279,8 +279,11 @@ curl -s -o /dev/null -w "%{http_code}" https://opencode.judigot.com/        # 20
 curl -s -o /dev/null -w "%{http_code}" https://workspace.judigot.com/       # 200 (Dashboard, alias)
 curl -s http://localhost:3100/api/apps | python3 -m json.tool               # JSON with app list
 
-# Per-app (replace slug)
-curl -s -o /dev/null -w "%{http_code}" https://judigot.com/scaffolder/      # 200 if running
+    # DevBubble widget
+    curl -s -o /dev/null -w "%{http_code}" https://judigot.com/dev-bubble.js    # 200 (static widget bundle)
+
+    # Per-app (replace slug)
+    curl -s -o /dev/null -w "%{http_code}" https://judigot.com/scaffolder/      # 200 if running
 ```
 
 ## .env — Source of Truth
@@ -564,6 +567,6 @@ sudo journalctl -u nginx -n 20 --no-pager
 2. **Always kill stale port processes before restarting** — Vite will silently pick a different port
 3. **Use `strictPort: true`** in all Vite configs to fail loud instead of silently rebinding
 4. **The dashboard reads `.env` live** — no restart needed for app list changes
-5. **The DevBubble widget is injected by nginx** — `sub_filter` adds a `<script>` tag to every app page; the widget is standalone vanilla JS with no app dependencies. Rebuild with `esbuild` and redeploy with `deploy-nginx.sh`.
+5. **The DevBubble widget is injected by nginx** — `sub_filter` adds a `<script>` tag to every app page; the widget is a self-contained React bundle (React+ReactDOM included in the IIFE). Rebuild with `esbuild --jsx=automatic` and redeploy with `deploy-nginx.sh`.
 6. **Dashboard is inside the workspace repo** at `~/workspace/dashboard/` — it is NOT a separate repository
 7. **`APPS` in `.env` is the single source of truth** for what apps exist and how they're routed

@@ -417,23 +417,26 @@ const AppCard: FC<{
   </button>
 );
 
-const AppsTab: FC<{ config: IConfig | null; loading: boolean }> = ({
+const AppsTab: FC<{ config: IConfig | null; loading: boolean; visible: boolean }> = ({
   config,
   loading,
+  visible,
 }) => {
   // Determine current app from URL path
   const currentSlug = window.location.pathname.split("/").filter(Boolean)[0] ?? "";
 
+  const hide = !visible ? { display: "none" as const } : undefined;
+
   if (loading) {
-    return <div className="db-apps-loading">Loading apps...</div>;
+    return <div className="db-apps-loading" style={hide}>Loading apps...</div>;
   }
 
   if (!config || config.apps.length === 0) {
-    return <div className="db-apps-loading">No apps registered.</div>;
+    return <div className="db-apps-loading" style={hide}>No apps registered.</div>;
   }
 
   return (
-    <div className="db-apps">
+    <div className="db-apps" style={hide}>
       <div className="db-apps-grid">
         {/* OpenCode card */}
         <button
@@ -518,17 +521,15 @@ const DevBubbleWidget: FC = () => {
           </button>
         </div>
 
-        {/* Tab content */}
-        {activeTab === "apps" ? (
-          <AppsTab config={config} loading={loading} />
-        ) : (
-          <iframe
-            className="db-iframe"
-            src={OPENCODE_URL}
-            title="OpenCode"
-            allow="clipboard-read; clipboard-write; microphone"
-          />
-        )}
+        {/* Tab content — both always mounted, toggled via CSS */}
+        <AppsTab config={config} loading={loading} visible={activeTab === "apps"} />
+        <iframe
+          className="db-iframe"
+          src={OPENCODE_URL}
+          title="OpenCode"
+          allow="clipboard-read; clipboard-write; microphone"
+          style={{ display: activeTab === "opencode" ? "block" : "none" }}
+        />
       </div>
 
       {/* Floating bubble */}

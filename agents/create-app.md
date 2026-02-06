@@ -104,7 +104,7 @@ This is a **single EC2 instance** running Ubuntu. Everything runs on one box:
     └── packages/
         ├── dev-bubble/           # DevBubble widget + React component
         │   └── src/
-        │       ├── widget.ts            # Standalone widget (vanilla JS, injected by nginx)
+        │       ├── widget.tsx           # Standalone React widget (compiled to IIFE, injected by nginx)
         │       ├── DevBubble.tsx        # React component (legacy, kept for reference)
         │       ├── DevBubble.module.css # React component styles
         │       └── index.ts             # Exports DevBubble + IBubbleApp
@@ -136,12 +136,12 @@ Nginx uses `sub_filter` to inject the DevBubble widget into every app page. For 
 - `sub_filter '</body>' '<script src="/dev-bubble.js" ...></script></body>'` — injects the widget before closing body tag
 - `sub_filter_once on` — only inject once per response
 
-The widget bundle at `/dev-bubble.js` is a self-contained IIFE built with esbuild from `dashboard/packages/dev-bubble/src/widget.ts`. It creates a draggable floating bubble, and when tapped, opens a fullscreen panel with an OpenCode iframe, URL bar, and Home button. No React, no dependencies on the host app.
+The widget bundle at `/dev-bubble.js` is a self-contained React IIFE built with esbuild from `dashboard/packages/dev-bubble/src/widget.tsx`. It bundles React+ReactDOM (~62KB gzipped) and creates a draggable floating bubble. When tapped, it opens a fullscreen panel with two tabs: **Apps** (fetches `/api/apps`, renders clickable cards matching the dashboard style) and **OpenCode** (iframe). The current app is highlighted in the Apps tab.
 
 **To rebuild the widget:**
 ```sh
 cd ~/workspace/dashboard
-npx esbuild packages/dev-bubble/src/widget.ts --bundle --minify --format=iife --outfile=../dist/dev-bubble.js --target=es2020
+npx esbuild packages/dev-bubble/src/widget.tsx --bundle --minify --format=iife --outfile=../dist/dev-bubble.js --target=es2020 --jsx=automatic
 ```
 
 **To deploy** (copies widget to `/var/www/static/` and reloads nginx):
@@ -421,13 +421,13 @@ The dashboard is a **pnpm monorepo** inside `~/workspace/dashboard/`:
   - `vite.config.ts` — port 3200, proxies `/api` to localhost:3100
 
 - **`packages/dev-bubble`** — The DevBubble widget and React component
-  - `src/widget.ts` — **Standalone vanilla JS widget** (the primary artifact):
-    - Built with esbuild into `~/workspace/dist/dev-bubble.js`
+  - `src/widget.tsx` — **Standalone React widget** (the primary artifact):
+    - Built with esbuild into `~/workspace/dist/dev-bubble.js` (React+ReactDOM bundled in IIFE)
     - Injected into app pages by nginx `sub_filter`
-    - Draggable floating bubble (touch + mouse support)
-    - Fullscreen panel with OpenCode iframe, URL bar, Home button
+    - Draggable floating bubble (pointer events for touch + mouse)
+    - Fullscreen panel with two tabs: **Apps** (clickable cards from `/api/apps`) and **OpenCode** (iframe)
     - Configured via `<script>` data attributes: `data-opencode-url`, `data-dashboard-url`
-    - No React, no dependencies on host app
+    - Self-contained: bundles its own React, no dependency on host app's framework
   - `src/DevBubble.tsx` — Legacy React component (kept for reference, not actively used)
   - `src/index.ts` — Exports for the React component
 

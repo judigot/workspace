@@ -114,7 +114,7 @@ This is the core workflow. You're on your phone, looking at your app.
 
 The DevBubble widget is automatically injected into the page by nginx (`sub_filter`). No app code changes required.
 
-**Step 2** — You see something you want to change. Tap the chat bubble (bottom-right). OpenCode opens fullscreen over the app.
+**Step 2** — You see something you want to change. Tap the chat bubble (bottom-right). A panel opens with two tabs: **Apps** (showing all your workspace apps) and **OpenCode** (the AI coding assistant). Tap the OpenCode tab.
 
 **Step 3** — Tell it what you want:
 
@@ -145,14 +145,15 @@ Go to `judigot.com`. The dashboard shows all registered apps with live status:
 Tap any app card — the browser navigates directly to the app URL (e.g. `judigot.com/scaffolder/`). The app runs as a native page with full Auth0/cookie support (no iframe restrictions).
 
 The **DevBubble** widget appears on every app page (bottom-right, draggable):
-- Tap to expand — opens a fullscreen panel with OpenCode + URL bar + Home button
-- Tap Home — navigates back to the dashboard
-- Enter a URL in the URL bar — navigates the browser to that address
+- Tap to expand — opens a fullscreen panel with two tabs:
+  - **Apps** — clickable cards for all registered apps (with status dots), matching the dashboard style. Tap a card to navigate to that app. The current app is highlighted.
+  - **OpenCode** — the AI coding assistant in an iframe
+- Tap Home (in the header) — navigates back to the dashboard
 - Tap minimize — collapse back to bubble
 
 The bubble is draggable like a Messenger chat head. It is the **only control surface** on app pages — no top nav bar, no standalone back button.
 
-**How it works:** Nginx uses `sub_filter` to inject a `<script>` tag into every app's HTML response before `</body>`. The script loads a self-contained widget bundle (`/dev-bubble.js`) that creates the bubble and panel entirely in vanilla JS — no React, no build dependency on the host app.
+**How it works:** Nginx uses `sub_filter` to inject a `<script>` tag into every app's HTML response before `</body>`. The script loads a self-contained React widget bundle (`/dev-bubble.js`) that includes React+ReactDOM (~62KB gzipped). The widget fetches `/api/apps` and renders the same app card UI as the dashboard.
 
 ---
 
@@ -209,7 +210,7 @@ For every app location, nginx rewrites the HTML response:
 ```
 sub_filter '</body>' '<script src="/dev-bubble.js" data-opencode-url="..." data-dashboard-url="..."></script></body>';
 ```
-The widget is self-contained vanilla JS — no React, no dependencies on the host app.
+The widget is a self-contained React bundle (React+ReactDOM included). It fetches `/api/apps` and renders clickable app cards matching the dashboard style.
 
 **The vibe-coding loop:**
 

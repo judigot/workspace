@@ -47,9 +47,9 @@ Then it automatically:
 
 | URL | What you see |
 |-----|-------------|
-| `https://judigot.com` | Dashboard — app grid with live status |
-| `https://opencode.judigot.com` | OpenCode (embeddable, used by the chat bubble) |
-| `https://workspace.judigot.com` | Dashboard (alias for `judigot.com`) |
+| `https://judigot.com` | Workspace — app strip + OpenCode |
+| `https://opencode.judigot.com` | OpenCode (standalone, also embedded in the workspace shell) |
+| `https://workspace.judigot.com` | Workspace (alias for `judigot.com`) |
 
 ---
 
@@ -67,8 +67,8 @@ OpenCode (via the `create-app` agent) will:
 
 Result:
 - `https://judigot.com/my-app/` is live
-- Dashboard at `judigot.com` shows it with a green status dot
-- Tap the card to open it full-screen with the chat bubble
+- App strip at `judigot.com` shows it with a green status dot
+- Tap the chip to navigate to it; the DevBubble on the app page has the same shell
 
 Full-stack apps work too:
 
@@ -83,21 +83,22 @@ Full-stack apps work too:
 
 ### Journey 3: Vibe Code from Your Phone
 
-This is the core workflow. You're on your phone, looking at your app.
+This is the core workflow. You're on your phone.
+
+**Step 1** — Open `judigot.com`. You see the **WorkspaceShell**: a horizontal app strip at the top (scrollable chips with status dots) and OpenCode filling the rest of the screen.
 
 ```
 ┌─────────────────────────┐
-│      judigot.com        │
+│ [scaffolder●] [my-app●] │  ← app strip
+├─────────────────────────┤
 │                         │
-│  ┌──────┐  ┌─────────┐ │
-│  │  OC  │  │scaffolder│ │
-│  │  ●   │  │  ●      │ │
-│  └──────┘  └─────────┘ │
+│        OpenCode         │
+│                         │
 │                         │
 └─────────────────────────┘
 ```
 
-**Step 1** — Tap the scaffolder card. The browser navigates to `judigot.com/scaffolder/` — a native page, not an iframe.
+**Step 2** — Tap the scaffolder chip. The browser navigates to `judigot.com/scaffolder/` — a native page (not an iframe).
 
 ```
 ┌─────────────────────────┐
@@ -105,24 +106,23 @@ This is the core workflow. You're on your phone, looking at your app.
 │                         │
 │     Your app runs as    │
 │     a native page       │
-│     (no iframe)         │
 │                         │
 │                  🟣      │
 │                  bubble  │
 └─────────────────────────┘
 ```
 
-The DevBubble widget is automatically injected into the page by nginx (`sub_filter`). No app code changes required.
+The DevBubble widget is automatically injected by nginx (`sub_filter`). No app code changes needed.
 
-**Step 2** — You see something you want to change. Tap the chat bubble (bottom-right). A panel opens with two tabs: **Apps** (showing all your workspace apps) and **OpenCode** (the AI coding assistant). Tap the OpenCode tab.
+**Step 3** — You see something you want to change. Tap the chat bubble. It opens the same WorkspaceShell (app strip + OpenCode) inside a fullscreen overlay.
 
-**Step 3** — Tell it what you want:
+**Step 4** — Tell OpenCode what you want:
 
 > "Change the header background to red"
 
 OpenCode edits the code. Vite HMR picks up the change. **You see it instantly.**
 
-**Step 4** — Tap minimize. You're back to your app with the change applied. Keep going.
+**Step 5** — Tap minimize. You're back to your app with the change applied. Keep going.
 
 This is the loop:
 
@@ -134,26 +134,23 @@ No editor. No terminal. No laptop. Just your phone and the running app.
 
 ---
 
-### Journey 4: Open an Existing App
+### Journey 4: Navigate Between Apps
 
-Go to `judigot.com`. The dashboard shows all registered apps with live status:
+Both `judigot.com` and the DevBubble panel show the same **WorkspaceShell** UI:
 
-- **Green dot** = dev server is running
-- **Gray dot** = dev server is stopped
-- **OC card** = opens OpenCode in a new tab
+- **App strip** (top) — horizontal scrollable chips for each registered app
+  - **Green dot** = dev server running
+  - **Gray dot** = dev server stopped
+  - Tap a chip to navigate the browser to that app
+  - Current app is highlighted
+- **OpenCode** (below) — AI coding assistant filling the remaining space
 
-Tap any app card — the browser navigates directly to the app URL (e.g. `judigot.com/scaffolder/`). The app runs as a native page with full Auth0/cookie support (no iframe restrictions).
-
-The **DevBubble** widget appears on every app page (bottom-right, draggable):
-- Tap to expand — opens a fullscreen panel with two tabs:
-  - **Apps** — clickable cards for all registered apps (with status dots), matching the dashboard style. Tap a card to navigate to that app. The current app is highlighted.
-  - **OpenCode** — the AI coding assistant in an iframe
-- Tap Home (in the header) — navigates back to the dashboard
+On app pages, the DevBubble appears as a draggable floating button (bottom-right, like a Messenger chat head):
+- Tap to expand — opens the WorkspaceShell in a fullscreen overlay
+- Tap Home (in the header) — navigates back to `judigot.com`
 - Tap minimize — collapse back to bubble
 
-The bubble is draggable like a Messenger chat head. It is the **only control surface** on app pages — no top nav bar, no standalone back button.
-
-**How it works:** Nginx uses `sub_filter` to inject a `<script>` tag into every app's HTML response before `</body>`. The script loads a self-contained React widget bundle (`/dev-bubble.js`) that includes React+ReactDOM (~62KB gzipped). The widget fetches `/api/apps` and renders the same app card UI as the dashboard.
+**How it works:** The `WorkspaceShell` is a single React component shared by both contexts. On `judigot.com` it renders as the full page. On app pages, nginx injects a `<script>` tag via `sub_filter` that loads a self-contained bundle (`/dev-bubble.js`, ~62KB gzipped) which renders the shell inside the bubble's overlay panel.
 
 ---
 
@@ -192,16 +189,27 @@ judigot.com (+ workspace.judigot.com alias)
         ▼
    Nginx (:443, SSL)
         │
-        ├─ /              → Dashboard Vite (:3200)  ← app grid
+        ├─ /              → Dashboard Vite (:3200)  ← WorkspaceShell (app strip + OpenCode)
         ├─ /api/*         → Dashboard Hono API (:3100)
         │                   reads .env, checks port health
         ├─ /dev-bubble.js → Static widget bundle (/var/www/static/)
-        ├─ /<slug>/       → App Vite frontend + sub_filter injects DevBubble widget
+        ├─ /<slug>/       → App Vite frontend + sub_filter injects DevBubble
         ├─ /<slug>/api/   → App backend API (fullstack only)
         ├─ /<slug>/ws     → App websocket (fullstack+ws)
         └─ /<slug>/       → App backend + sub_filter (laravel)
 
 opencode.judigot.com → OpenCode (:4097, auth injected by nginx)
+```
+
+**Unified WorkspaceShell:**
+
+Both `judigot.com` and the DevBubble overlay render the same `WorkspaceShell` React component:
+```
+┌────────────────────────────────────────┐
+│ [app1 ●] [app2 ●] [app3 ○]  ← strip  │
+├────────────────────────────────────────┤
+│              OpenCode iframe           │
+└────────────────────────────────────────┘
 ```
 
 **DevBubble injection (nginx `sub_filter`):**
@@ -210,23 +218,23 @@ For every app location, nginx rewrites the HTML response:
 ```
 sub_filter '</body>' '<script src="/dev-bubble.js" data-opencode-url="..." data-dashboard-url="..."></script></body>';
 ```
-The widget is a self-contained React bundle (React+ReactDOM included). It fetches `/api/apps` and renders clickable app cards matching the dashboard style.
+The widget bundle includes React+ReactDOM and the `WorkspaceShell` component.
 
 **The vibe-coding loop:**
 
 ```
-Phone → judigot.com → tap app card → browser navigates to /scaffolder/
-                                                │
-                                      app loads as native page
-                                      DevBubble widget injected by nginx
-                                                │
-                                      tap bubble → panel with Apps + OpenCode tabs
-                                                │
-                                      "change X" → AI edits code
-                                                │
-                                      Vite HMR → change visible instantly
-                                                │
-                                      minimize → back to app
+Phone → judigot.com (WorkspaceShell) → tap app chip → /scaffolder/
+                                                          │
+                                                app loads as native page
+                                                DevBubble injected by nginx
+                                                          │
+                                                tap bubble → WorkspaceShell overlay
+                                                          │
+                                                "change X" → AI edits code
+                                                          │
+                                                Vite HMR → change visible instantly
+                                                          │
+                                                minimize → back to app
 ```
 
 ## App Types

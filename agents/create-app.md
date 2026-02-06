@@ -94,7 +94,7 @@ This is a **single EC2 instance** running Ubuntu. Everything runs on one box:
     ├── apps/
     │   └── workspace/            # Dashboard React app + Hono API server
     │       ├── src/
-    │       │   ├── App.tsx       # Dashboard UI — app grid (navigates to app URLs)
+    │       │   ├── App.tsx       # Dashboard UI — renders WorkspaceShell full-page
     │       │   ├── styles/
     │       │   │   └── main.scss # Dashboard styles
     │       │   └── server/
@@ -102,9 +102,10 @@ This is a **single EC2 instance** running Ubuntu. Everything runs on one box:
     │       │       └── index.ts  # Server entry point
     │       └── vite.config.ts    # Vite config (port 3200, proxies /api to 3100)
     └── packages/
-        ├── dev-bubble/           # DevBubble widget + React component
+        ├── dev-bubble/           # WorkspaceShell + DevBubble widget
         │   └── src/
-        │       ├── widget.tsx           # Standalone React widget (compiled to IIFE, injected by nginx)
+        │       ├── WorkspaceShell.tsx    # Shared UI: horizontal app strip + OpenCode iframe
+        │       ├── widget.tsx           # Standalone widget: bubble + panel + WorkspaceShell (IIFE bundle)
         │       ├── DevBubble.tsx        # React component (legacy, kept for reference)
         │       ├── DevBubble.module.css # React component styles
         │       └── index.ts             # Exports DevBubble + IBubbleApp
@@ -118,7 +119,7 @@ This is a **single EC2 instance** running Ubuntu. Everything runs on one box:
 Browser → Nginx (:443 SSL)
   │
   ├─ judigot.com (+ workspace.judigot.com alias)
-  │   ├─ /                    → Dashboard Vite (:3200)  ← app grid
+  │   ├─ /                    → Dashboard Vite (:3200)  ← WorkspaceShell (app strip + OpenCode)
   │   ├─ /api/*               → Dashboard Hono API (:3100)
   │   ├─ /dev-bubble.js       → Static widget bundle (/var/www/static/)
   │   ├─ /<slug>/             → App Vite frontend + sub_filter injects DevBubble
@@ -136,7 +137,7 @@ Nginx uses `sub_filter` to inject the DevBubble widget into every app page. For 
 - `sub_filter '</body>' '<script src="/dev-bubble.js" ...></script></body>'` — injects the widget before closing body tag
 - `sub_filter_once on` — only inject once per response
 
-The widget bundle at `/dev-bubble.js` is a self-contained React IIFE built with esbuild from `dashboard/packages/dev-bubble/src/widget.tsx`. It bundles React+ReactDOM (~62KB gzipped) and creates a draggable floating bubble. When tapped, it opens a fullscreen panel with two tabs: **Apps** (fetches `/api/apps`, renders clickable cards matching the dashboard style) and **OpenCode** (iframe). The current app is highlighted in the Apps tab.
+The widget bundle at `/dev-bubble.js` is a self-contained React IIFE built with esbuild from `dashboard/packages/dev-bubble/src/widget.tsx`. It bundles React+ReactDOM (~62KB gzipped) and renders a draggable floating bubble. When tapped, it opens a fullscreen panel containing the same `WorkspaceShell` component used by the dashboard — a horizontal app strip (scrollable chips with status dots) at the top and the OpenCode iframe below. The current app is highlighted in the strip.
 
 **To rebuild the widget:**
 ```sh
@@ -414,23 +415,25 @@ The dashboard is a **pnpm monorepo** inside `~/workspace/dashboard/`:
 ### Packages
 
 - **`apps/workspace`** — The main dashboard app
-  - `src/App.tsx` — React app with a single dashboard view:
-    - App grid cards with status dots
-    - Clicking an app card navigates the browser to the app URL (e.g. `/scaffolder/`)
-    - OpenCode card opens in a new tab
+  - `src/App.tsx` — Renders `WorkspaceShell` as a full-page app (app strip + OpenCode)
   - `src/server/app.ts` — Hono API server
     - `GET /api/apps` — reads `~/workspace/.env`, parses `APPS`, TCP-checks each port, returns JSON
     - `GET /api/health` — returns `{ status: "ok" }`
   - `vite.config.ts` — port 3200, proxies `/api` to localhost:3100
 
-- **`packages/dev-bubble`** — The DevBubble widget and React component
-  - `src/widget.tsx` — **Standalone React widget** (the primary artifact):
-    - Built with esbuild into `~/workspace/dist/dev-bubble.js` (React+ReactDOM bundled in IIFE)
+- **`packages/dev-bubble`** — WorkspaceShell + DevBubble widget
+  - `src/WorkspaceShell.tsx` — **Shared UI component** used by both dashboard and widget:
+    - Horizontal scrollable app strip (chips with icon, name, status dot)
+    - OpenCode iframe filling remaining vertical space
+    - Fetches `/api/apps` for the app list; current app highlighted
+    - Accepts optional `header` slot for context-specific controls (Home/minimize buttons)
+    - Exports `WORKSPACE_SHELL_CSS` for style injection
+  - `src/widget.tsx` — **Standalone widget bundle** (compiled to IIFE with esbuild):
+    - Bundles React+ReactDOM + WorkspaceShell (~62KB gzipped)
     - Injected into app pages by nginx `sub_filter`
     - Draggable floating bubble (pointer events for touch + mouse)
-    - Fullscreen panel with two tabs: **Apps** (clickable cards from `/api/apps`) and **OpenCode** (iframe)
+    - Fullscreen panel renders WorkspaceShell with Home + minimize header buttons
     - Configured via `<script>` data attributes: `data-opencode-url`, `data-dashboard-url`
-    - Self-contained: bundles its own React, no dependency on host app's framework
   - `src/DevBubble.tsx` — Legacy React component (kept for reference, not actively used)
   - `src/index.ts` — Exports for the React component
 

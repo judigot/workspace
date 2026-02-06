@@ -11,6 +11,11 @@
       "import": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./shell": {
+      "types": "./src/WorkspaceShell.tsx",
+      "import": "./src/WorkspaceShell.tsx",
+      "default": "./src/WorkspaceShell.tsx"
+    },
     "./styles": "./src/DevBubble.module.css"
   },
   "peerDependencies": {

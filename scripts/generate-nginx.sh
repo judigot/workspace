@@ -17,7 +17,6 @@ OPENCODE_BACKEND=${OPENCODE_BACKEND:-"127.0.0.1:4097"}
 WORKSPACE_ROOT=${WORKSPACE_ROOT:-"/var/www/workspace"}
 DASHBOARD_PORT=${DASHBOARD_PORT:-3200}
 DASHBOARD_API_PORT=${DASHBOARD_API_PORT:-3100}
-DEFAULT_APP=${DEFAULT_APP:-""}
 
 # Backward compatibility: if VITE_APPS is set but APPS is not, convert to new format
 if [ -z "${APPS:-}" ] && [ -n "${VITE_APPS:-}" ]; then
@@ -75,12 +74,6 @@ has_option() {
   return 1
 }
 
-DEFAULT_APP=$(normalize_slug "$DEFAULT_APP")
-DEFAULT_APP_TYPE=""
-DEFAULT_APP_FRONTEND_PORT=""
-DEFAULT_APP_BACKEND_PORT=""
-DEFAULT_APP_OPTIONS=""
-
 # --- Generate config ---
 
 cat > "$OUTPUT" <<EOF
@@ -96,13 +89,6 @@ EOF
 for app in $APPS; do
   parse_app "$app"
   upstream_name=$(slug_to_upstream_name "$APP_SLUG")
-
-  if [ -n "$DEFAULT_APP" ] && [ "$APP_SLUG" = "$DEFAULT_APP" ]; then
-    DEFAULT_APP_TYPE="$APP_TYPE"
-    DEFAULT_APP_FRONTEND_PORT="$APP_FRONTEND_PORT"
-    DEFAULT_APP_BACKEND_PORT="$APP_BACKEND_PORT"
-    DEFAULT_APP_OPTIONS="$APP_OPTIONS"
-  fi
 
   case "$APP_TYPE" in
     frontend)
@@ -219,7 +205,7 @@ for app in $APPS; do
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection \$connection_upgrade;
-        proxy_set_header Host 127.0.0.1;
+        proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
@@ -233,7 +219,7 @@ for app in $APPS; do
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection \$connection_upgrade;
-        proxy_set_header Host 127.0.0.1;
+        proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
@@ -257,7 +243,7 @@ EOF
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection \$connection_upgrade;
-        proxy_set_header Host 127.0.0.1;
+        proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
@@ -309,7 +295,7 @@ EOF
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection \$connection_upgrade;
-        proxy_set_header Host 127.0.0.1;
+        proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
@@ -344,88 +330,7 @@ EOF
   esac
 done
 
-DEFAULT_UPSTREAM_NAME=""
-if [ -n "$DEFAULT_APP_TYPE" ]; then
-  DEFAULT_UPSTREAM_NAME=$(slug_to_upstream_name "$DEFAULT_APP")
-fi
-
 cat >> "$OUTPUT" <<EOF
-
-    # Default app on root domain (optional)
-EOF
-
-if [ "$DEFAULT_APP_TYPE" = "fullstack" ]; then
-  cat >> "$OUTPUT" <<EOF
-
-    location /api/ {
-        proxy_pass http://app_${DEFAULT_UPSTREAM_NAME}_backend/api/;
-        proxy_http_version 1.1;
-        proxy_set_header Connection "";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header X-Forwarded-Port \$server_port;
-        proxy_set_header X-Forwarded-Host \$host;
-        proxy_buffering on;
-        proxy_buffer_size 128k;
-        proxy_buffers 4 256k;
-    }
-EOF
-
-  if has_option "${DEFAULT_APP_OPTIONS:-}" "ws"; then
-    cat >> "$OUTPUT" <<EOF
-
-    location /ws {
-        proxy_pass http://app_${DEFAULT_UPSTREAM_NAME}_backend/ws;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \$connection_upgrade;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 86400s;
-        proxy_buffering off;
-    }
-EOF
-  fi
-fi
-
-if [ "$DEFAULT_APP_TYPE" = "frontend" ] || [ "$DEFAULT_APP_TYPE" = "fullstack" ]; then
-  cat >> "$OUTPUT" <<EOF
-
-    location / {
-        proxy_pass http://app_${DEFAULT_UPSTREAM_NAME}_frontend/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \$connection_upgrade;
-        proxy_set_header Host 127.0.0.1;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 86400s;
-        proxy_buffering off;
-    }
-EOF
-elif [ "$DEFAULT_APP_TYPE" = "laravel" ]; then
-  cat >> "$OUTPUT" <<EOF
-
-    location / {
-        proxy_pass http://app_${DEFAULT_UPSTREAM_NAME}_backend/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \$connection_upgrade;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 86400s;
-        proxy_buffering off;
-    }
-EOF
-else
-  cat >> "$OUTPUT" <<EOF
 
     location / {
         proxy_pass http://opencode_backend;
@@ -439,10 +344,6 @@ else
         proxy_read_timeout 86400s;
         proxy_buffering off;
     }
-EOF
-fi
-
-cat >> "$OUTPUT" <<EOF
 
     location = /.env {
         deny all;
@@ -516,145 +417,6 @@ server {
         proxy_buffering off;
     }
 }
-
-# Subdomain-based app routing (works with default Vite localhost config)
 EOF
-
-for app in $APPS; do
-  parse_app "$app"
-  upstream_name=$(slug_to_upstream_name "$APP_SLUG")
-
-  case "$APP_TYPE" in
-    frontend)
-      cat >> "$OUTPUT" <<EOF
-
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name ${APP_SLUG}.${DOMAIN};
-
-    ssl_certificate ${SSL_CERT};
-    ssl_certificate_key ${SSL_KEY};
-
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-
-    location / {
-        proxy_pass http://app_${upstream_name}_frontend/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \$connection_upgrade;
-        proxy_set_header Host 127.0.0.1;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        add_header Content-Security-Policy "frame-ancestors https://${WORKSPACE_SUBDOMAIN}" always;
-        add_header X-Frame-Options "" always;
-        proxy_read_timeout 86400s;
-        proxy_buffering off;
-    }
-}
-EOF
-      ;;
-    fullstack)
-      cat >> "$OUTPUT" <<EOF
-
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name ${APP_SLUG}.${DOMAIN};
-
-    ssl_certificate ${SSL_CERT};
-    ssl_certificate_key ${SSL_KEY};
-
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-
-    location /api/ {
-        proxy_pass http://app_${upstream_name}_backend/api/;
-        proxy_http_version 1.1;
-        proxy_set_header Connection "";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header X-Forwarded-Port \$server_port;
-        proxy_set_header X-Forwarded-Host \$host;
-        proxy_buffering on;
-        proxy_buffer_size 128k;
-        proxy_buffers 4 256k;
-    }
-EOF
-
-      if has_option "${APP_OPTIONS:-}" "ws"; then
-        cat >> "$OUTPUT" <<EOF
-
-    location /ws {
-        proxy_pass http://app_${upstream_name}_backend/ws;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \$connection_upgrade;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 86400s;
-        proxy_buffering off;
-    }
-EOF
-      fi
-
-      cat >> "$OUTPUT" <<EOF
-
-    location / {
-        proxy_pass http://app_${upstream_name}_frontend/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \$connection_upgrade;
-        proxy_set_header Host 127.0.0.1;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        add_header Content-Security-Policy "frame-ancestors https://${WORKSPACE_SUBDOMAIN}" always;
-        add_header X-Frame-Options "" always;
-        proxy_read_timeout 86400s;
-        proxy_buffering off;
-    }
-}
-EOF
-      ;;
-    laravel)
-      cat >> "$OUTPUT" <<EOF
-
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name ${APP_SLUG}.${DOMAIN};
-
-    ssl_certificate ${SSL_CERT};
-    ssl_certificate_key ${SSL_KEY};
-
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-
-    location / {
-        proxy_pass http://app_${upstream_name}_backend/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \$connection_upgrade;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        add_header Content-Security-Policy "frame-ancestors https://${WORKSPACE_SUBDOMAIN}" always;
-        add_header X-Frame-Options "" always;
-        proxy_read_timeout 86400s;
-        proxy_buffering off;
-    }
-}
-EOF
-      ;;
-  esac
-done
 
 echo "Wrote nginx config to ${OUTPUT}"

@@ -191,15 +191,17 @@ SSL_KEY="/etc/letsencrypt/live/${DOMAIN}/privkey.pem"
 
 ALL_DOMAINS="${DOMAIN},${WWW_DOMAIN},${OPENCODE_SUBDOMAIN},${WORKSPACE_SUBDOMAIN}"
 
-# Single idempotent certbot command handles all cases:
-# - No cert yet: issues a new one
-# - Cert exists, same domains, not expiring: keeps it (no-op)
-# - Cert exists, different domains: expands
-# - Cert exists, near expiry: renews
+# Delete existing cert first so certbot never prompts about keep/renew/expand.
+# This makes every run a clean issue — true idempotence with zero prompts.
+if sudo certbot certificates --cert-name "$DOMAIN" 2>/dev/null | grep -q "Certificate Name: ${DOMAIN}"; then
+  warn "Deleting existing cert '${DOMAIN}' for clean re-issue"
+  sudo certbot delete --cert-name "$DOMAIN" --non-interactive
+fi
+
 sudo systemctl stop nginx 2>/dev/null || true
 sudo certbot certonly --standalone \
-  --cert-name "$DOMAIN" --keep-until-expiring \
-  -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" -d "$WORKSPACE_SUBDOMAIN" \
+  --cert-name "$DOMAIN" \
+  -d "$ALL_DOMAINS" \
   --non-interactive --agree-tos --no-eff-email -m "$CERTBOT_EMAIL"
 ok "Certs ready"
 

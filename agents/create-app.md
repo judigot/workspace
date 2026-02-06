@@ -564,6 +564,26 @@ sudo journalctl -u dashboard-vite -n 20 --no-pager
 sudo journalctl -u nginx -n 20 --no-pager
 ```
 
+## DevBubble Widget Preflight
+
+Before finishing any app creation or registration, **always verify the DevBubble widget is built and deployed**. Without it, the floating chat bubble won't appear on app pages.
+
+```sh
+# Check if widget exists
+ls -la /var/www/static/dev-bubble.js
+
+# If missing or stale, rebuild and redeploy:
+cd ~/workspace/dashboard
+npx esbuild packages/dev-bubble/src/widget.tsx --bundle --minify --format=iife --outfile=../dist/dev-bubble.js --target=es2020 --jsx=automatic
+~/workspace/scripts/deploy-nginx.sh
+
+# Verify it's served
+curl -s -o /dev/null -w "%{http_code}" https://judigot.com/dev-bubble.js
+# Should return 200
+```
+
+This step is critical because `deploy-nginx.sh` only copies `dist/dev-bubble.js` if it exists — it won't fail or warn if the file is missing. Always check.
+
 ## Key Rules
 
 1. **Never edit `/etc/nginx/sites-available/default` directly** — always use `deploy-nginx.sh`

@@ -306,6 +306,19 @@ else
   ok "Dependencies already installed"
 fi
 
+# Build DevBubble widget bundle
+WIDGET_OUT="${ROOT_DIR}/dist/dev-bubble.js"
+warn "Building DevBubble widget..."
+mkdir -p "${ROOT_DIR}/dist"
+(cd "${DASHBOARD_DIR}" && npx esbuild packages/dev-bubble/src/widget.tsx \
+  --bundle --minify --format=iife --target=es2020 --jsx=automatic \
+  --outfile="${WIDGET_OUT}")
+ok "DevBubble widget built ($(du -h "${WIDGET_OUT}" | cut -f1))"
+
+# Re-deploy nginx so the widget bundle is copied to /var/www/static/
+"${SCRIPT_DIR}/deploy-nginx.sh"
+ok "Nginx re-deployed with DevBubble widget"
+
 # Create systemd service for dashboard API (Hono)
 DASHBOARD_API_SERVICE="/etc/systemd/system/dashboard-api.service"
 sudo tee "$DASHBOARD_API_SERVICE" > /dev/null <<EOF

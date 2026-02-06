@@ -1,0 +1,207 @@
+.container {
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* Floating Bubble */
+.bubble {
+  position: fixed;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  z-index: 99999;
+  touch-action: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (hover: hover) {
+  .bubble:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 28px rgba(102, 126, 234, 0.5);
+  }
+}
+
+.bubble:active {
+  transform: scale(0.95);
+}
+
+.bubble:active,
+.bubble.dragging {
+  cursor: grabbing;
+}
+
+.devIndicator {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: #ff4757;
+  color: white;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+/* Maximized Panel (fullscreen overlay) — always mounted to preserve iframe state */
+.panel {
+  position: fixed;
+  inset: 0;
+  background: #0f0f1a;
+  z-index: 99998;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Hidden state — off-screen + no pointer events, keeps iframe alive */
+.panelHidden {
+  visibility: hidden;
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  flex-shrink: 0;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.minimizeButton {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease, transform 0.2s ease;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.minimizeButton:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(1.1);
+}
+
+.minimizeButton:active {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+/* Workspace nav strip between header and iframe */
+.nav {
+  display: flex;
+  gap: 0;
+  padding: 0;
+  background: #161627;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.nav::-webkit-scrollbar {
+  display: none;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  min-height: 44px;
+  -webkit-tap-highlight-color: transparent;
+  font-family: inherit;
+}
+
+.navItem:active {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+@media (hover: hover) {
+  .navItem:hover {
+    color: rgba(255, 255, 255, 0.9);
+    background: rgba(255, 255, 255, 0.04);
+  }
+}
+
+.navActive {
+  color: white;
+  border-bottom-color: #667eea;
+}
+
+.navIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.navDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.navDotUp {
+  background: #2ed573;
+  box-shadow: 0 0 4px rgba(46, 213, 115, 0.5);
+}
+
+.navDotDown {
+  background: #57606a;
+}
+
+.iframe {
+  flex: 1;
+  width: 100%;
+  border: none;
+  background: #0f0f1a;
+}
+
+@media (max-width: 768px) {
+  .header {
+    padding: 10px 16px;
+  }
+
+  .title {
+    font-size: 14px;
+  }
+
+  .minimizeButton {
+    width: 48px;
+    height: 48px;
+  }
+}

@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Workspace</title>
+    <style>
+      :root {
+        --bg: #0f1115;
+        --panel: #181b22;
+        --panel-2: #222634;
+        --text: #f5f7ff;
+        --muted: #b8c1d9;
+        --accent: #5ee4c6;
+        --accent-2: #2ad3ff;
+        --shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Space Grotesk", "Manrope", "Segoe UI", sans-serif;
+      }
+
+      .workspace {
+        position: relative;
+        height: 100vh;
+        width: 100vw;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at top left, #1b2140 0%, #0f1115 55%),
+          linear-gradient(135deg, rgba(94, 228, 198, 0.08), transparent 40%);
+      }
+
+      .app-frame {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: #fff;
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 14px;
+        border-radius: 14px;
+        background: rgba(24, 27, 34, 0.85);
+        backdrop-filter: blur(14px);
+        box-shadow: var(--shadow);
+      }
+
+      .toolbar input {
+        flex: 1;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: var(--panel-2);
+        color: var(--text);
+        padding: 8px 12px;
+        border-radius: 12px;
+        font-size: 14px;
+      }
+
+      .toolbar button {
+        border: 0;
+        padding: 8px 12px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        color: #0c1118;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .bubble {
+        position: absolute;
+        right: 24px;
+        bottom: 24px;
+        width: 68px;
+        height: 68px;
+        border-radius: 22px;
+        background: linear-gradient(135deg, #1f2330, #2e3344);
+        box-shadow: var(--shadow);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        z-index: 30;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .bubble span {
+        font-size: 28px;
+      }
+
+      .panel {
+        position: absolute;
+        right: 24px;
+        bottom: 24px;
+        width: min(380px, 92vw);
+        height: min(72vh, 680px);
+        background: rgba(20, 23, 31, 0.96);
+        border-radius: 24px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+        display: none;
+        flex-direction: column;
+        z-index: 40;
+      }
+
+      .panel.open {
+        display: flex;
+      }
+
+      .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 16px;
+        background: rgba(28, 32, 42, 0.95);
+      }
+
+      .panel-header h2 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      .panel-header button {
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        font-size: 18px;
+        cursor: pointer;
+      }
+
+      .panel-body {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 12px 16px 16px;
+        flex: 1;
+      }
+
+      .panel iframe {
+        flex: 1;
+        border: 0;
+        width: 100%;
+        background: #0d0f13;
+        border-radius: 16px;
+      }
+
+      @media (max-width: 720px) {
+        .panel {
+          right: 12px;
+          bottom: 12px;
+          width: calc(100% - 24px);
+          height: 72vh;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="workspace">
+      <iframe
+        id="appFrame"
+        class="app-frame"
+        title="App"
+        allow="clipboard-read; clipboard-write"
+      ></iframe>
+
+      <div class="bubble" id="openBubble" title="Open OpenCode">
+        <span>OC</span>
+      </div>
+
+      <div class="panel" id="panel">
+        <div class="panel-header">
+          <h2>OpenCode</h2>
+          <button id="closePanel" aria-label="Minimize">✕</button>
+        </div>
+        <div class="panel-body">
+          <div class="toolbar">
+            <input id="appUrl" type="url" placeholder="App URL" />
+            <button id="loadApp">Load</button>
+          </div>
+          <iframe
+            id="opencodeFrame"
+            title="OpenCode"
+            allow="clipboard-read; clipboard-write; microphone"
+          ></iframe>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const defaultApp = "https://judigot.com/playground/";
+      const defaultOpenCode = "https://opencode.judigot.com/";
+
+      const appUrlInput = document.getElementById("appUrl");
+      const appFrame = document.getElementById("appFrame");
+      const opencodeFrame = document.getElementById("opencodeFrame");
+      const panel = document.getElementById("panel");
+      const openBubble = document.getElementById("openBubble");
+      const closePanel = document.getElementById("closePanel");
+      const loadApp = document.getElementById("loadApp");
+
+      const params = new URLSearchParams(window.location.search);
+      const appUrl = params.get("app") || defaultApp;
+
+      appUrlInput.value = appUrl;
+      appFrame.src = appUrl;
+      opencodeFrame.src = defaultOpenCode;
+
+      loadApp.addEventListener("click", () => {
+        const value = appUrlInput.value.trim();
+        if (!value) return;
+        const next = new URL(window.location.href);
+        next.searchParams.set("app", value);
+        window.location.href = next.toString();
+      });
+
+      openBubble.addEventListener("click", () => {
+        panel.classList.add("open");
+      });
+
+      closePanel.addEventListener("click", () => {
+        panel.classList.remove("open");
+      });
+    </script>
+  </body>
+</html>

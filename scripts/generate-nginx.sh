@@ -15,14 +15,8 @@ SSL_KEY=${SSL_KEY:-"/etc/letsencrypt/live/${DOMAIN}/privkey.pem"}
 OPENCODE_BACKEND=${OPENCODE_BACKEND:-"127.0.0.1:4097"}
 OPENCODE_SERVER_USERNAME=${OPENCODE_SERVER_USERNAME:-""}
 OPENCODE_SERVER_PASSWORD=${OPENCODE_SERVER_PASSWORD:-""}
+OPENCODE_HTPASSWD_FILE=${OPENCODE_HTPASSWD_FILE:-"/etc/nginx/.htpasswd-opencode"}
 DEFAULT_APP=${DEFAULT_APP:-""}
-
-# Base64-encode credentials for nginx to forward to OpenCode iframe endpoint
-if [ -n "$OPENCODE_SERVER_USERNAME" ] && [ -n "$OPENCODE_SERVER_PASSWORD" ]; then
-  OPENCODE_AUTH_BASIC=$(printf '%s:%s' "$OPENCODE_SERVER_USERNAME" "$OPENCODE_SERVER_PASSWORD" | base64)
-else
-  OPENCODE_AUTH_BASIC=""
-fi
 
 WORKSPACE_ROOT=${WORKSPACE_ROOT:-"/var/www/workspace"}
 DASHBOARD_PORT=${DASHBOARD_PORT:-3200}
@@ -409,6 +403,17 @@ server {
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Content-Security-Policy "frame-ancestors https://${DOMAIN} https://${WORKSPACE_SUBDOMAIN}" always;
 
+EOF
+
+if [ -n "$OPENCODE_SERVER_USERNAME" ] && [ -n "$OPENCODE_SERVER_PASSWORD" ]; then
+  cat >> "$OUTPUT" <<EOF
+    auth_basic "OpenCode";
+    auth_basic_user_file ${OPENCODE_HTPASSWD_FILE};
+EOF
+fi
+
+cat >> "$OUTPUT" <<EOF
+
     location / {
         proxy_pass http://opencode_backend;
         proxy_http_version 1.1;
@@ -421,16 +426,6 @@ server {
         proxy_read_timeout 86400s;
         proxy_buffering off;
         proxy_hide_header X-Frame-Options;
-        proxy_hide_header WWW-Authenticate;
-EOF
-
-  if [ -n "$OPENCODE_AUTH_BASIC" ]; then
-    cat >> "$OUTPUT" <<EOF
-        proxy_set_header Authorization "Basic ${OPENCODE_AUTH_BASIC}";
-EOF
-  fi
-
-  cat >> "$OUTPUT" <<EOF
     }
 }
 

@@ -75,13 +75,11 @@ fi
 
 echo "✓ Added ${SLUG}:${PORT} to VITE_APPS"
 
-# Redeploy nginx + workspace shell
+# Redeploy nginx
 export VITE_APPS="$NEW_VITE_APPS"
 "${SCRIPT_DIR}/deploy-nginx.sh"
 echo "✓ Nginx redeployed with new app"
-
-"${SCRIPT_DIR}/deploy-workspace-shell.sh"
-echo "✓ Workspace shell updated with new app"
+echo "✓ Dashboard will pick up the new app automatically (reads .env live)"
 
 echo ""
 echo "Next steps:"

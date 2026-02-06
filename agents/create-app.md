@@ -1,6 +1,6 @@
 ---
-name: vite-nginx-playground
-description: Use this agent when setting up or troubleshooting Vite dev servers behind Nginx on the workspace domain. Examples:
+name: create-app
+description: Use this agent when creating, configuring, or troubleshooting Vite apps on this workspace. Handles scaffolding, nginx registration, and dashboard integration. Examples:
 
 <example>
 Context: User wants a new Vite app to load under a slug.

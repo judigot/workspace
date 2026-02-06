@@ -47,6 +47,24 @@ This triggers because the dashboard (served at judigot.com, with workspace.judig
 </commentary>
 </example>
 
+<example>
+Context: User wants to clone and run an existing repository.
+user: "Clone https://github.com/someone/cool-app and run it"
+assistant: "I'll clone the repo via SSH, detect the tech stack from package.json/config files, install deps, configure the base path, register it with nginx, and start the dev server."
+<commentary>
+This triggers because the user wants an existing repo cloned, analyzed, and served on the workspace. The agent follows the Clone and Run playbook.
+</commentary>
+</example>
+
+<example>
+Context: User wants a Next.js app.
+user: "Create a Next.js blog app"
+assistant: "I'll scaffold a Next.js app, configure basePath and assetPrefix, register it as nextjs type, and start the dev server."
+<commentary>
+This triggers because the request involves a non-Vite framework that has first-class support via the nextjs app type.
+</commentary>
+</example>
+
 model: inherit
 color: green
 tools: ["Read", "Write", "Bash", "Grep", "Glob"]
@@ -621,6 +639,203 @@ Register and start:
 ~/workspace/scripts/add-app.sh landing static 4000
 cd ~/landing && <start command>
 ```
+
+---
+
+## Clone and Run Any Repository
+
+When a user provides a repository URL (GitHub, GitLab, Bitbucket, etc.), follow this systematic process to clone it, detect the tech stack, configure it, and serve it on the workspace.
+
+### Step 1: Clone the repository
+
+```sh
+# Always use SSH for GitHub repos
+# Convert https://github.com/owner/repo.git → git@github.com:owner/repo.git
+cd ~
+git clone git@github.com:<owner>/<repo>.git
+cd ~/<repo>
+```
+
+If the user provides an HTTPS URL, convert it to SSH before cloning.
+
+### Step 2: Detect the tech stack
+
+Examine the repository root to determine what framework and language it uses. Check these files **in order**:
+
+| File | Indicates |
+|------|-----------|
+| `package.json` | Node.js project — read `scripts`, `dependencies`, and `devDependencies` |
+| `next.config.js` / `next.config.mjs` / `next.config.ts` | Next.js |
+| `nuxt.config.ts` / `nuxt.config.js` | Nuxt |
+| `vite.config.ts` / `vite.config.js` | Vite (check plugins for React/Vue/Svelte/Solid) |
+| `svelte.config.js` | SvelteKit |
+| `astro.config.mjs` / `astro.config.ts` | Astro |
+| `remix.config.js` / `remix.config.ts` | Remix |
+| `angular.json` | Angular |
+| `composer.json` | PHP / Laravel (check for `laravel/framework` in require) |
+| `artisan` | Laravel (definitive) |
+| `manage.py` | Django |
+| `requirements.txt` / `Pipfile` / `pyproject.toml` | Python project |
+| `pom.xml` | Java / Spring Boot (Maven) |
+| `build.gradle` / `build.gradle.kts` | Java / Spring Boot (Gradle) |
+| `go.mod` | Go |
+| `Cargo.toml` | Rust |
+| `Gemfile` | Ruby / Rails |
+| `mix.exs` | Elixir / Phoenix |
+| `Dockerfile` / `docker-compose.yml` | Containerized — inspect to find the actual framework |
+
+**For `package.json` projects, inspect further:**
+
+```sh
+# Check for framework in dependencies
+cat package.json | python3 -c "
+import json, sys
+pkg = json.load(sys.stdin)
+deps = {**pkg.get('dependencies', {}), **pkg.get('devDependencies', {})}
+scripts = pkg.get('scripts', {})
+print('=== Dependencies ===')
+for d in ['next', 'nuxt', 'vite', '@sveltejs/kit', 'astro', '@remix-run/dev', '@angular/core', 'react', 'vue', 'svelte', 'express', 'fastify', 'hono', '@nestjs/core', 'koa']:
+    if d in deps: print(f'  {d}: {deps[d]}')
+print('=== Scripts ===')
+for k, v in scripts.items(): print(f'  {k}: {v}')
+"
+```
+
+### Step 3: Determine the app type and port
+
+Based on detection results, choose the app type:
+
+| Detected | App type | Default port |
+|----------|----------|-------------|
+| Next.js (`next` in deps) | `nextjs` | 3000 |
+| Nuxt (`nuxt` in deps) | `nuxt` | 3000 |
+| Vite config present | `frontend` | 5173 |
+| Vite + Express/Hono/Fastify backend | `fullstack` | fe: 5173, be: 5000 |
+| SvelteKit, Astro, Remix | `static` | 3000/4321 |
+| Angular | `static` | 4200 |
+| Laravel (`artisan` file) | `laravel` | 8000 |
+| Django (`manage.py`) | `backend` | 8000 |
+| Spring Boot (`pom.xml`/`build.gradle`) | `backend` | 8080 |
+| Express/Fastify/Hono/NestJS (no Vite) | `backend` | 3000 |
+| Go | `backend` | 8080 |
+| Rails | `backend` | 3000 |
+| Unknown | `static` | 3000 |
+
+**Always check for port conflicts before assigning:**
+
+```sh
+ss -tlnp | grep :<port>
+```
+
+If the default port is in use, pick the next available port.
+
+### Step 4: Install dependencies
+
+| Ecosystem | Command |
+|-----------|---------|
+| Node (has `pnpm-lock.yaml`) | `pnpm install` |
+| Node (has `bun.lockb` or `bun.lock`) | `bun install` |
+| Node (has `yarn.lock`) | `npm install` (yarn may not be installed) |
+| Node (has `package-lock.json` or none) | `npm install` |
+| Python (`requirements.txt`) | `pip install -r requirements.txt` |
+| Python (`Pipfile`) | `pip install pipenv && pipenv install` |
+| Python (`pyproject.toml`) | `pip install -e .` |
+| PHP (`composer.json`) | `composer install` |
+| Go | `go mod download` |
+| Rust | `cargo build` |
+| Ruby | `bundle install` |
+| Java (Maven) | `./mvnw install -DskipTests` or `mvn install -DskipTests` |
+| Java (Gradle) | `./gradlew build -x test` or `gradle build -x test` |
+
+### Step 5: Configure base path
+
+Every framework needs its base path set to `/<slug>/` so nginx can route to it. The slug is derived from the repo name (lowercase, hyphens only).
+
+**Determine the slug:**
+```sh
+# Use the repo directory name, lowercased, hyphens only
+SLUG=$(basename $(pwd) | tr '[:upper:]' '[:lower:]' | tr '_' '-')
+```
+
+**Framework-specific base path configuration:**
+
+| Framework | Config file | Setting |
+|-----------|-------------|---------|
+| Vite | `vite.config.ts` | `base: '/<slug>/'`, `server.hmr.path: '/<slug>/__vite_hmr'`, `server.hmr.protocol: 'wss'` |
+| Next.js | `next.config.ts/mjs` | `basePath: '/<slug>'`, `assetPrefix: '/<slug>'` |
+| Nuxt | `nuxt.config.ts` | `app: { baseURL: '/<slug>/' }`, `vite.server.hmr: { protocol: 'wss', clientPort: 443 }` |
+| Angular | `angular.json` | `"baseHref": "/<slug>/"` under architect > build > options |
+| SvelteKit | `svelte.config.js` | `kit: { paths: { base: '/<slug>' } }` |
+| Astro | `astro.config.mjs` | `base: '/<slug>'` |
+| Remix | `remix.config.js` | `basename: '/<slug>'` |
+| Laravel | `.env` | `APP_URL=https://<domain>/<slug>` |
+| Django | `settings.py` | `FORCE_SCRIPT_NAME = '/<slug>'`, `STATIC_URL = '/<slug>/static/'` |
+| Spring Boot | `application.properties` | `server.servlet.context-path=/<slug>` |
+| Rails | `config/environments/development.rb` | `config.relative_url_root = '/<slug>'` |
+| Express | app code | Mount routes under `/<slug>` or use `backend` type (nginx strips prefix) |
+| Go | app code | Handle routes at `/` — `backend` type strips the prefix |
+
+### Step 6: Register and start
+
+```sh
+# Register with nginx
+~/workspace/scripts/add-app.sh <slug> <type> <port> [backend_port] [options]
+
+# Start the dev server (always bind to 0.0.0.0)
+cd ~/<repo>
+nohup <start command> > /tmp/<slug>-dev.log 2>&1 &
+
+# Wait and verify
+sleep 3
+curl -s -o /dev/null -w "%{http_code}" http://localhost:<port>/
+curl -s -o /dev/null -w "%{http_code}" https://judigot.com/<slug>/
+```
+
+### Step 7: Verify DevBubble widget
+
+```sh
+# Check widget is built and deployed
+ls -la /var/www/static/dev-bubble.js
+
+# If missing, build and deploy
+cd ~/workspace/dashboard
+npx esbuild packages/dev-bubble/src/widget.tsx --bundle --minify --format=iife --outfile=../dist/dev-bubble.js --target=es2020 --jsx=automatic
+~/workspace/scripts/deploy-nginx.sh
+```
+
+### Common issues when cloning repos
+
+**Missing `.env` file:**
+Many repos ship `.env.example` but not `.env`. Copy it:
+```sh
+cp .env.example .env
+# Then edit .env with appropriate values
+```
+
+**Database requirements:**
+If the app requires a database (PostgreSQL, MySQL, MongoDB, Redis), check if it's installed:
+```sh
+systemctl status postgresql mysql mongod redis-server 2>/dev/null
+```
+If not installed, inform the user — database setup is outside the scope of nginx routing.
+
+**Different Node.js version:**
+Check `.nvmrc` or `engines` in `package.json`:
+```sh
+cat .nvmrc 2>/dev/null || cat package.json | python3 -c "import json,sys; print(json.load(sys.stdin).get('engines',{}).get('node','not specified'))"
+# If different from current: nvm install <version> && nvm use <version>
+```
+
+**Monorepo structure:**
+If the repo is a monorepo (has `packages/`, `apps/`, or workspace config), identify which package to run:
+```sh
+# Check for workspace config
+cat pnpm-workspace.yaml 2>/dev/null
+cat package.json | python3 -c "import json,sys; print(json.load(sys.stdin).get('workspaces','not a workspace'))"
+# Install from root, then run the specific app
+```
+
+---
 
 ### Widget injection
 

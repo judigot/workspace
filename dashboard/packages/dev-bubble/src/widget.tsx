@@ -6,10 +6,10 @@
  * Behavior modeled after Facebook Messenger chat heads on Android:
  *   - Bubble is ALWAYS visible -- it never disappears
  *   - Draggable with edge-snapping after release
- *   - On tap: bubble repositions to top-right, home button slides out to its
- *     left, chat panel slides down below the bubble row
- *   - On minimize (tap bubble again): home button slides back, panel closes,
- *     bubble returns to its previous edge position
+ *   - On tap: bubble docks to top of whichever edge it's on (left or right)
+ *   - Home button slides out to the opposite side of the bubble
+ *   - Chat panel slides down below the bubble row
+ *   - On minimize (tap bubble again): everything reverses simultaneously
  *   - No header bar inside the panel -- the bubble row IS the header
  *
  * Config via script tag data attributes:
@@ -41,7 +41,7 @@ const BUTTON_GAP = BUBBLE_MARGIN;
 const DRAG_THRESHOLD = 10;
 /** Duration for bubble reposition animations (ms). */
 const ANIM_DURATION = 350;
-/** Delay before home button starts sliding out (minimal -- starts almost immediately). */
+/** Delay before home button starts sliding out. */
 const HOME_REVEAL_DELAY = 50;
 /** Duration for home button slide animation. */
 const HOME_SLIDE_DURATION = 250;
@@ -55,11 +55,6 @@ const OPENCODE_URL =
   "https://opencode.judigot.com";
 const DASHBOARD_URL =
   scriptTag?.getAttribute("data-dashboard-url") ?? "/";
-
-/** Bubble docked X position (top-right edge). */
-function dockedX() {
-  return window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN;
-}
 
 // ---------------------------------------------------------------------------
 // Styles
@@ -96,13 +91,13 @@ const WIDGET_CSS = `
     padding: 0;
     outline: none;
     transition: none;
-    /* Entry animation on page load */
     animation: db-btn-enter ${ANIM_DURATION}ms cubic-bezier(0.25, 1, 0.5, 1) both;
   }
   @keyframes db-btn-enter {
     from { transform: scale(0); opacity: 0; }
     to { transform: scale(1); opacity: 1; }
   }
+  .db-btn:focus, .db-btn:focus-visible { outline: none; box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4); }
   .db-btn:active { cursor: grabbing; }
   .db-btn-animating {
     transition: left ${ANIM_DURATION}ms cubic-bezier(0.25, 1, 0.5, 1),
@@ -136,18 +131,17 @@ const WIDGET_CSS = `
     z-index: 99999;
     padding: 0;
     outline: none;
-    /* Start hidden behind the bubble (translated right) */
-    transform: translateX(${BUBBLE_SIZE + BUTTON_GAP}px) scale(0.8);
+    /* Hidden state: transform is set via inline style (direction depends on dock side) */
     opacity: 0;
     pointer-events: none;
-    /* Transition position (follows bubble) + reveal transform together */
     transition: left ${ANIM_DURATION}ms cubic-bezier(0.25, 1, 0.5, 1),
                 top ${ANIM_DURATION}ms cubic-bezier(0.25, 1, 0.5, 1),
                 transform ${HOME_SLIDE_DURATION}ms cubic-bezier(0.25, 1, 0.5, 1),
                 opacity ${HOME_SLIDE_DURATION}ms ease;
   }
+  .db-home:focus, .db-home:focus-visible { outline: none; }
   .db-home-visible {
-    transform: translateX(0) scale(1);
+    transform: translateX(0) scale(1) !important;
     opacity: 1;
     pointer-events: auto;
   }
@@ -210,6 +204,8 @@ const IconHome: FC = () => (
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+type DockSide = "left" | "right";
+
 function clamp(x: number, y: number) {
   return {
     x: Math.max(BUBBLE_MARGIN, Math.min(window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN, x)),
@@ -224,12 +220,24 @@ function snapX(fromX: number) {
     : window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN;
 }
 
+/** Which side of the screen is this X position on? */
+function sideForX(x: number): DockSide {
+  return x + BUBBLE_SIZE / 2 < window.innerWidth / 2 ? "left" : "right";
+}
+
+/** Docked X for a given side. */
+function dockedX(side: DockSide) {
+  return side === "left"
+    ? BUBBLE_MARGIN
+    : window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN;
+}
+
 // ---------------------------------------------------------------------------
 // Widget component
 // ---------------------------------------------------------------------------
 const DevBubbleWidget: FC = () => {
   // ── Bubble position ──
-  const [pos, setPos] = useState(() => clamp(dockedX(), BUBBLE_MARGIN));
+  const [pos, setPos] = useState(() => clamp(window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN, BUBBLE_MARGIN));
   const posRef = useRef(pos);
   useEffect(() => { posRef.current = pos; }, [pos]);
 
@@ -241,7 +249,10 @@ const DevBubbleWidget: FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [hasOpened, setHasOpened] = useState(false);
 
-  // ── Home button visibility (staggered after bubble docks) ──
+  // ── Which side the bubble docked to ──
+  const [dockSide, setDockSide] = useState<DockSide>("right");
+
+  // ── Home button visibility ──
   const [homeVisible, setHomeVisible] = useState(false);
   const homeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -267,14 +278,15 @@ const DevBubbleWidget: FC = () => {
     }, ANIM_DURATION + 20);
   }, []);
 
-  // ── Open ── bubble moves and home button reveals simultaneously.
+  // ── Open ── dock to whichever side the bubble is currently on.
   const openPanel = useCallback(() => {
     savedPos.current = { ...posRef.current };
     if (!hasOpened) setHasOpened(true);
-    const target = clamp(dockedX(), BUBBLE_MARGIN);
+    const side = sideForX(posRef.current.x);
+    setDockSide(side);
+    const target = clamp(dockedX(side), BUBBLE_MARGIN);
     setIsOpen(true);
     animateTo(target);
-    // Reveal home button early -- starts sliding out as bubble is still moving.
     if (homeTimer.current) clearTimeout(homeTimer.current);
     homeTimer.current = setTimeout(() => {
       setHomeVisible(true);
@@ -282,7 +294,7 @@ const DevBubbleWidget: FC = () => {
     }, HOME_REVEAL_DELAY);
   }, [hasOpened, animateTo]);
 
-  // ── Close ── everything moves at once, no sequential waiting.
+  // ── Close ── everything moves at once.
   const closePanel = useCallback(() => {
     setHomeVisible(false);
     setIsOpen(false);
@@ -305,7 +317,7 @@ const DevBubbleWidget: FC = () => {
   // ── Pointer handlers ──
   const onPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLButtonElement>) => {
-      if (isOpen) return; // No dragging while open.
+      if (isOpen) return;
       e.preventDefault();
       if (animTimer.current) {
         clearTimeout(animTimer.current);
@@ -369,7 +381,7 @@ const DevBubbleWidget: FC = () => {
   useEffect(() => {
     const handler = () => {
       if (isOpen) {
-        const target = clamp(dockedX(), BUBBLE_MARGIN);
+        const target = clamp(dockedX(dockSide), BUBBLE_MARGIN);
         posRef.current = target;
         setPos(target);
       } else {
@@ -382,13 +394,23 @@ const DevBubbleWidget: FC = () => {
     };
     window.addEventListener("resize", handler);
     return () => window.removeEventListener("resize", handler);
-  }, [isOpen]);
+  }, [isOpen, dockSide]);
 
   // ── Layout calculations ──
-  // Home button sits to the left of the bubble.
-  const homeLeft = pos.x - BUBBLE_SIZE - BUTTON_GAP;
+  // Home button sits on the OPPOSITE side of the bubble.
+  const homeLeft = dockSide === "right"
+    ? pos.x - BUBBLE_SIZE - BUTTON_GAP   // home to the left
+    : pos.x + BUBBLE_SIZE + BUTTON_GAP;  // home to the right
   const homeTop = pos.y;
-  // Panel anchored below the bubble row — same spacing as all other gaps.
+
+  // Hidden-state translateX: push home behind the bubble.
+  // If docked right, home hides by translating to the right (positive X).
+  // If docked left, home hides by translating to the left (negative X).
+  const homeHiddenTx = dockSide === "right"
+    ? BUBBLE_SIZE + BUTTON_GAP
+    : -(BUBBLE_SIZE + BUTTON_GAP);
+
+  // Panel anchored below the bubble row.
   const panelTop = pos.y + BUBBLE_SIZE + BUBBLE_MARGIN;
   const panelTopClosed = window.innerHeight + 10;
 
@@ -415,12 +437,18 @@ const DevBubbleWidget: FC = () => {
         <WorkspaceShell opencodeUrl={OPENCODE_URL} />
       </div>
 
-      {/* Home button — fixed, positioned to bubble's left */}
+      {/* Home button — positioned on opposite side of bubble */}
       <button
         className={homeClass}
         aria-label="Home"
         title="Back to dashboard"
-        style={{ left: homeLeft, top: homeTop }}
+        style={{
+          left: homeLeft,
+          top: homeTop,
+          // When hidden, translate behind the bubble (direction depends on dock side).
+          // .db-home-visible overrides this with translateX(0) via !important.
+          transform: `translateX(${homeHiddenTx}px) scale(0.8)`,
+        }}
         onClick={() => { window.location.href = DASHBOARD_URL; }}
       >
         <IconHome />

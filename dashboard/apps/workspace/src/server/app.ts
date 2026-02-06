@@ -168,7 +168,7 @@ app.get("/api/apps", async (c) => {
         frontendPort: raw.frontendPort,
         backendPort: raw.backendPort,
         options: raw.options,
-        url: `https://${domain}/${raw.slug}/`,
+        url: `https://${raw.slug}.${domain}/`,
         status,
       };
     }),

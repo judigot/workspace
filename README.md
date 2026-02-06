@@ -31,6 +31,12 @@ cd ~/workspace
 ./scripts/init.sh
 ```
 
+For native app subdomains (`my-app.judigot.com`), add this DNS record in Squarespace once:
+
+| Type | Host | Value |
+|------|------|-------|
+| `A` | `*` | your EC2 public IP |
+
 The wizard prompts for:
 - Domain (default: `judigot.com`)
 - OpenCode username and password (basic auth)
@@ -61,12 +67,12 @@ Open OpenCode at `judigot.com` (or from the chat bubble inside any app). Ask it 
 
 OpenCode (via the `create-app` agent) will:
 1. Scaffold `~/my-app` with Vite + React + TypeScript
-2. Configure `vite.config.ts` with the correct base path, HMR, and port
+2. Keep default Vite config (no base-path rewrite needed)
 3. Run `~/workspace/scripts/add-app.sh my-app frontend 5177`
 4. Start the dev server
 
 Result:
-- `https://judigot.com/my-app/` is live
+- `https://my-app.judigot.com/` is live
 - Dashboard at `workspace.judigot.com` shows it with a green status dot
 - Tap the card to open it full-screen with the chat bubble
 
@@ -185,13 +191,14 @@ workspace.judigot.com                    judigot.com
         ▼                                     ▼
    Nginx (:443, SSL)                     Nginx (:443, SSL)
         │                                     │
-        ├─ /api/*  → Hono API (:3100)         ├─ /              → OpenCode (:4097)
-        │            reads .env                ├─ /<slug>/       → App frontend
-        │            checks port health        ├─ /<slug>/api/   → App backend (fullstack)
-        │                                     ├─ /<slug>/ws     → App websocket (fullstack+ws)
-        └─ /*      → Dashboard Vite (:3200)   └─ /<slug>/       → App backend (laravel)
+        ├─ /api/*  → Hono API (:3100)         ├─ /              → OpenCode (or DEFAULT_APP)
+        │            reads .env                └─ /<slug>/       → legacy path routing (optional)
+        │            checks port health
+        └─ /*      → Dashboard Vite (:3200)
                      App grid + DevBubble
-                                              opencode.judigot.com → OpenCode (iframe-friendly)
+
+<app>.judigot.com → App frontend/backend (native Vite/Laravel root routing)
+opencode.judigot.com → OpenCode (iframe-friendly)
 ```
 
 **The DevBubble loop:**
@@ -210,11 +217,11 @@ Phone → workspace.judigot.com → tap app → full-screen iframe
 
 ## App Types
 
-| Type | Command | Nginx routes generated |
-|------|---------|----------------------|
-| `frontend` | `add-app.sh my-app 5177` | `/<slug>/` → Vite, `/<slug>/__vite_hmr` → HMR |
-| `fullstack` | `add-app.sh my-api fullstack 3000 5000 ws` | Above + `/<slug>/api/` → backend, `/<slug>/ws` → websocket |
-| `laravel` | `add-app.sh admin laravel 8000` | `/<slug>/` → PHP backend |
+| Type | Command | Primary URL |
+|------|---------|-------------|
+| `frontend` | `add-app.sh my-app 5177` | `https://my-app.judigot.com/` |
+| `fullstack` | `add-app.sh my-api fullstack 3000 5000 ws` | `https://my-api.judigot.com/` |
+| `laravel` | `add-app.sh admin laravel 8000` | `https://admin.judigot.com/` |
 
 ## Repos
 
@@ -245,5 +252,7 @@ All config lives in `.env` (created by `init.sh`). See `.env.example` for refere
 | `OPENCODE_SERVER_PASSWORD` | — | Basic auth password |
 | `ANTHROPIC_API_KEY` | — | API key for OpenCode (optional in init) |
 | `APPS` | `""` | Registered apps (`slug:type:port[:backend_port[:options]]`) |
+| `DEFAULT_APP` | `""` | Optional app slug to serve at `https://judigot.com/` |
+| `ENABLE_WILDCARD_CERT` | `false` | Request `*.DOMAIN` cert via DNS challenge in `init.sh` |
 | `DASHBOARD_PORT` | `3200` | Dashboard Vite dev server port |
 | `DASHBOARD_API_PORT` | `3100` | Dashboard Hono API port |

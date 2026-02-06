@@ -141,6 +141,16 @@ prompt         DOMAIN                  "Domain"                       "${DOMAIN:
 prompt         OPENCODE_SERVER_USERNAME "OpenCode username"           "${OPENCODE_SERVER_USERNAME:-}"
 prompt_secret  OPENCODE_SERVER_PASSWORD "OpenCode password"           "${OPENCODE_SERVER_PASSWORD:-}"
 prompt_secret  ANTHROPIC_API_KEY       "Anthropic API key"            "${ANTHROPIC_API_KEY:-}" "false"
+prompt         DEFAULT_APP             "Default app on root domain (optional slug)" "${DEFAULT_APP:-}" "false"
+prompt         ENABLE_WILDCARD_CERT    "Enable wildcard cert for app subdomains (true/false)" "${ENABLE_WILDCARD_CERT:-false}"
+
+case "${ENABLE_WILDCARD_CERT}" in
+  true|false) ;;
+  *)
+    fail "ENABLE_WILDCARD_CERT must be true or false"
+    exit 1
+    ;;
+esac
 
 # Derived values
 WWW_DOMAIN=${WWW_DOMAIN:-"www.${DOMAIN}"}
@@ -164,6 +174,8 @@ OPENCODE_PORT=${OPENCODE_PORT}
 OPENCODE_BACKEND=${OPENCODE_BACKEND}
 OPENCODE_SERVER_USERNAME=${OPENCODE_SERVER_USERNAME}
 OPENCODE_SERVER_PASSWORD=${OPENCODE_SERVER_PASSWORD}
+DEFAULT_APP=${DEFAULT_APP}
+ENABLE_WILDCARD_CERT=${ENABLE_WILDCARD_CERT}
 API_BACKEND=${API_BACKEND}
 VITE_SCAFFOLDER_PORT=${VITE_SCAFFOLDER_PORT}
 VITE_APPS="${VITE_APPS}"
@@ -183,7 +195,11 @@ step 3 "TLS certificates"
 SSL_CERT="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
 SSL_KEY="/etc/letsencrypt/live/${DOMAIN}/privkey.pem"
 
-ALL_DOMAINS="${DOMAIN},${WWW_DOMAIN},${OPENCODE_SUBDOMAIN},${WORKSPACE_SUBDOMAIN}"
+if [ "${ENABLE_WILDCARD_CERT}" = "true" ]; then
+  ALL_DOMAINS="${DOMAIN},*.${DOMAIN}"
+else
+  ALL_DOMAINS="${DOMAIN},${WWW_DOMAIN},${OPENCODE_SUBDOMAIN},${WORKSPACE_SUBDOMAIN}"
+fi
 
 if [ -f "$SSL_CERT" ] && [ -f "$SSL_KEY" ]; then
   # Check if existing cert already covers all domains
@@ -196,27 +212,53 @@ if [ -f "$SSL_CERT" ] && [ -f "$SSL_KEY" ]; then
   else
     warn "Certs exist but may not cover all domains — expanding..."
     sudo systemctl stop nginx 2>/dev/null || true
-    if [ -n "$CERTBOT_EMAIL" ]; then
-      sudo certbot certonly --standalone --expand \
-        -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" -d "$WORKSPACE_SUBDOMAIN" \
-        --non-interactive --agree-tos -m "$CERTBOT_EMAIL"
+
+    if [ "${ENABLE_WILDCARD_CERT}" = "true" ]; then
+      warn "Wildcard cert requires DNS challenge. Certbot will prompt for TXT records."
+      if [ -n "$CERTBOT_EMAIL" ]; then
+        sudo certbot certonly --manual --preferred-challenges dns --manual-public-ip-logging-ok --expand \
+          -d "$DOMAIN" -d "*.${DOMAIN}" --agree-tos -m "$CERTBOT_EMAIL"
+      else
+        sudo certbot certonly --manual --preferred-challenges dns --manual-public-ip-logging-ok --expand \
+          -d "$DOMAIN" -d "*.${DOMAIN}"
+      fi
     else
-      sudo certbot certonly --standalone --expand \
-        -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" -d "$WORKSPACE_SUBDOMAIN"
+      if [ -n "$CERTBOT_EMAIL" ]; then
+        sudo certbot certonly --standalone --expand \
+          -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" -d "$WORKSPACE_SUBDOMAIN" \
+          --non-interactive --agree-tos -m "$CERTBOT_EMAIL"
+      else
+        sudo certbot certonly --standalone --expand \
+          -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" -d "$WORKSPACE_SUBDOMAIN"
+      fi
     fi
+
     ok "Certs expanded"
   fi
 else
   warn "No certs found — issuing via certbot..."
   sudo systemctl stop nginx 2>/dev/null || true
-  if [ -n "$CERTBOT_EMAIL" ]; then
-    sudo certbot certonly --standalone \
-      -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" -d "$WORKSPACE_SUBDOMAIN" \
-      --non-interactive --agree-tos -m "$CERTBOT_EMAIL"
+
+  if [ "${ENABLE_WILDCARD_CERT}" = "true" ]; then
+    warn "Wildcard cert requires DNS challenge. Certbot will prompt for TXT records."
+    if [ -n "$CERTBOT_EMAIL" ]; then
+      sudo certbot certonly --manual --preferred-challenges dns --manual-public-ip-logging-ok \
+        -d "$DOMAIN" -d "*.${DOMAIN}" --agree-tos -m "$CERTBOT_EMAIL"
+    else
+      sudo certbot certonly --manual --preferred-challenges dns --manual-public-ip-logging-ok \
+        -d "$DOMAIN" -d "*.${DOMAIN}"
+    fi
   else
-    sudo certbot certonly --standalone \
-      -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" -d "$WORKSPACE_SUBDOMAIN"
+    if [ -n "$CERTBOT_EMAIL" ]; then
+      sudo certbot certonly --standalone \
+        -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" -d "$WORKSPACE_SUBDOMAIN" \
+        --non-interactive --agree-tos -m "$CERTBOT_EMAIL"
+    else
+      sudo certbot certonly --standalone \
+        -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" -d "$WORKSPACE_SUBDOMAIN"
+    fi
   fi
+
   ok "Certs issued"
 fi
 
@@ -230,7 +272,7 @@ DASHBOARD_API_PORT=${DASHBOARD_API_PORT:-3100}
 export DOMAIN WWW_DOMAIN OPENCODE_SUBDOMAIN WORKSPACE_SUBDOMAIN
 export SSL_CERT SSL_KEY
 export VITE_SCAFFOLDER_PORT API_BACKEND OPENCODE_BACKEND
-export WORKSPACE_ROOT VITE_APPS DASHBOARD_PORT DASHBOARD_API_PORT
+export WORKSPACE_ROOT VITE_APPS DASHBOARD_PORT DASHBOARD_API_PORT DEFAULT_APP
 
 "${SCRIPT_DIR}/deploy-nginx.sh"
 ok "Nginx config deployed and reloaded"
@@ -379,7 +421,11 @@ bold "════════════════════════�
 bold "  Workspace is live"
 bold "═══════════════════════════════════════════════════════"
 printf '\n'
-cyan "  https://${DOMAIN}                → OpenCode"
+if [ -n "${DEFAULT_APP:-}" ]; then
+  cyan "  https://${DOMAIN}                → Default app: ${DEFAULT_APP}"
+else
+  cyan "  https://${DOMAIN}                → OpenCode"
+fi
 cyan "  https://${OPENCODE_SUBDOMAIN}    → OpenCode (embeddable)"
 cyan "  https://${WORKSPACE_SUBDOMAIN}   → Dashboard"
 printf '\n'

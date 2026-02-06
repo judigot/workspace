@@ -116,17 +116,19 @@ This is a **single EC2 instance** running Ubuntu. Everything runs on one box:
 Browser → Nginx (:443 SSL)
   │
   ├─ judigot.com
-  │   ├─ /                    → OpenCode (:4097)  ← catch-all
-  │   ├─ /<slug>/             → App Vite frontend (frontend/fullstack)
-  │   ├─ /<slug>/__vite_hmr   → Vite HMR websocket
-  │   ├─ /<slug>/api/         → App backend API (fullstack only)
-  │   └─ /<slug>/ws           → App websocket (fullstack + ws option)
+  │   ├─ /                    → OpenCode (or DEFAULT_APP when configured)
+  │   └─ /<slug>/...          → Legacy path routing (kept for backward compatibility)
   │
   ├─ opencode.judigot.com     → OpenCode (:4097, iframe-friendly, no X-Frame-Options)
   │
   └─ workspace.judigot.com
       ├─ /api/*               → Dashboard Hono API (:3100)
       └─ /*                   → Dashboard Vite (:3200)
+
+  └─ <app>.judigot.com        → Native app routing (recommended)
+      ├─ /                    → App frontend (frontend/fullstack) or backend (laravel)
+      ├─ /api/                → App backend API (fullstack)
+      └─ /ws                  → App websocket (fullstack + ws option)
 ```
 
 ## Services and Ports
@@ -260,7 +262,7 @@ curl -s -o /dev/null -w "%{http_code}" https://workspace.judigot.com/       # 20
 curl -s http://localhost:3100/api/apps | python3 -m json.tool               # JSON with app list
 
 # Per-app (replace slug)
-curl -s -o /dev/null -w "%{http_code}" https://judigot.com/scaffolder/      # 200 if running
+curl -s -o /dev/null -w "%{http_code}" https://scaffolder.judigot.com/      # 200 if running
 ```
 
 ## .env — Source of Truth
@@ -275,6 +277,8 @@ All configuration lives in `~/workspace/.env`. Key variables:
 | `OPENCODE_SERVER_PASSWORD` | — | Basic auth password |
 | `ANTHROPIC_API_KEY` | — | API key (optional in init) |
 | `APPS` | `""` | Registered apps: `slug:type:port[:backend_port[:options]]` |
+| `DEFAULT_APP` | `""` | Optional app slug served on `https://judigot.com/` |
+| `ENABLE_WILDCARD_CERT` | `false` | Request `*.DOMAIN` wildcard cert via DNS challenge |
 | `DASHBOARD_PORT` | `3200` | Dashboard Vite port |
 | `DASHBOARD_API_PORT` | `3100` | Dashboard API port |
 
@@ -286,9 +290,9 @@ The Dashboard API (`~/workspace/dashboard/apps/workspace/src/server/app.ts`) rea
 
 | Type | Format | Example | Nginx routes |
 |------|--------|---------|--------------|
-| `frontend` | `slug:frontend:port` | `my-app:frontend:5177` | `/<slug>/`, `/<slug>/__vite_hmr` |
-| `fullstack` | `slug:fullstack:fe_port:be_port[:ws]` | `scaffolder:fullstack:3000:5000:ws` | `/<slug>/`, `/<slug>/__vite_hmr`, `/<slug>/api/`, `/<slug>/ws` (if ws) |
-| `laravel` | `slug:laravel:port` | `admin:laravel:8000` | `/<slug>/` (proxied to PHP backend) |
+| `frontend` | `slug:frontend:port` | `my-app:frontend:5177` | `https://my-app.judigot.com/` |
+| `fullstack` | `slug:fullstack:fe_port:be_port[:ws]` | `scaffolder:fullstack:3000:5000:ws` | `https://scaffolder.judigot.com/`, `/api/`, `/ws` |
+| `laravel` | `slug:laravel:port` | `admin:laravel:8000` | `https://admin.judigot.com/` |
 
 ### Register a new app
 
@@ -313,35 +317,26 @@ bun create vite my-app --template react-ts
 cd ~/my-app && bun install
 ```
 
-Configure `vite.config.ts`:
+Default `vite.config.ts` is fine. Only ensure port + host:
 
 ```ts
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-const slug = process.env.VITE_BASE_PATH || "/my-app";
 const port = Number(process.env.VITE_FRONTEND_PORT) || 5177;
 
 export default defineConfig({
   plugins: [react()],
-  base: `${slug}/`,
   server: {
     host: "0.0.0.0",
     port,
     strictPort: true,
     allowedHosts: true,
-    hmr: {
-      path: `${slug}/__vite_hmr`,
-      protocol: "wss",
-    },
   },
 });
 ```
 
 Key rules:
-- `base` must have trailing slash: `/<slug>/`
-- `server.hmr.path` must match: `/<slug>/__vite_hmr`
-- `server.hmr.protocol` must be `wss` (nginx terminates SSL)
 - Use `strictPort: true` to prevent silent port changes
 - `allowedHosts: true` is required for nginx proxy
 
@@ -350,7 +345,7 @@ Register and start:
 ```sh
 ~/workspace/scripts/add-app.sh my-app 5177
 cd ~/my-app
-VITE_BASE_PATH=/my-app VITE_FRONTEND_PORT=5177 bun run dev --host 0.0.0.0 --port 5177
+VITE_FRONTEND_PORT=5177 bun run dev --host 0.0.0.0 --port 5177
 ```
 
 ### Scaffold a fullstack app
@@ -375,7 +370,7 @@ serve({
 });
 ```
 
-The backend must serve routes under `/api/` — nginx strips the `/<slug>/api/` prefix and proxies to `/api/` on the backend.
+The backend must serve routes under `/api/` — nginx forwards `/api/` on app subdomains directly.
 
 ### Iframe embedding
 
@@ -449,9 +444,9 @@ The catch-all `location /` proxies to OpenCode. If a slug isn't in the generated
 
 ### HMR websocket fails
 
-1. Verify `server.hmr.path` in `vite.config.ts` matches `/<slug>/__vite_hmr`
-2. Verify `server.hmr.protocol` is `wss`
-3. Check nginx has the HMR location: `grep '__vite_hmr' /etc/nginx/sites-available/default`
+1. Verify the dev server runs on the configured frontend port
+2. Verify `allowedHosts: true` in `vite.config.ts`
+3. Check nginx has the app subdomain server block
 
 ### Dashboard shows no apps / API returns empty
 
@@ -463,7 +458,7 @@ The catch-all `location /` proxies to OpenCode. If a slug isn't in the generated
 
 The app's response headers may include `X-Frame-Options: DENY` or a restrictive CSP.
 
-1. Check headers: `curl -sI https://judigot.com/scaffolder/ | grep -i frame`
+1. Check headers: `curl -sI https://scaffolder.judigot.com/ | grep -i frame`
 2. The app's nginx location block should have `proxy_hide_header X-Frame-Options` and appropriate CSP
 3. Redeploy nginx if the headers are wrong: `~/workspace/scripts/deploy-nginx.sh`
 

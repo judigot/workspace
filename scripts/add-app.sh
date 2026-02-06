@@ -107,6 +107,13 @@ validate_inputs() {
     echo "No .env found — run init.sh first" >&2
     exit 1
   fi
+
+  case "$SLUG" in
+    www|workspace|opencode)
+      echo "Slug '${SLUG}' is reserved for core workspace domains" >&2
+      exit 1
+      ;;
+  esac
 }
 
 load_env() {
@@ -255,43 +262,39 @@ print_next_steps() {
     frontend)
       cat <<EOF
   1. Create or clone the app at ~/${SLUG}
-  2. Configure vite.config.ts:
-       base: '/${SLUG}/'
-       server.hmr.path: '/${SLUG}/__vite_hmr'
-       server.port: ${FRONTEND_PORT}
-  3. Start the dev server:
+  2. Start the dev server (default Vite config works):
        cd ~/${SLUG} && bun run dev --host 0.0.0.0 --port ${FRONTEND_PORT}
-  4. Visit: https://${domain}/${SLUG}/
+  3. Visit: https://${SLUG}.${domain}/
 EOF
       ;;
     fullstack)
       cat <<EOF
   1. Create or clone the app at ~/${SLUG}
-  2. Configure vite.config.ts:
-       base: '/${SLUG}/'
-       server.hmr.path: '/${SLUG}/__vite_hmr'
-       server.port: ${FRONTEND_PORT}
-  3. Start the frontend:
+  2. Start the frontend:
        cd ~/${SLUG} && bun run dev --host 0.0.0.0 --port ${FRONTEND_PORT}
-  4. Start the backend:
+  3. Start the backend:
        cd ~/${SLUG} && bun run server --port ${BACKEND_PORT}
-  5. Visit: https://${domain}/${SLUG}/
-     API:   https://${domain}/${SLUG}/api/
+  4. Visit: https://${SLUG}.${domain}/
+     API:   https://${SLUG}.${domain}/api/
 EOF
       if [ "$OPTIONS" = "ws" ]; then
-        echo "     WS:    wss://${domain}/${SLUG}/ws"
+        echo "     WS:    wss://${SLUG}.${domain}/ws"
       fi
       ;;
     laravel)
       cat <<EOF
   1. Create or clone the app at ~/${SLUG}
   2. Start the server (pick one):
-       php artisan serve --host=0.0.0.0 --port=${BACKEND_PORT}
-       php artisan octane:start --host=0.0.0.0 --port=${BACKEND_PORT}
-  3. Visit: https://${domain}/${SLUG}/
+        php artisan serve --host=0.0.0.0 --port=${BACKEND_PORT}
+        php artisan octane:start --host=0.0.0.0 --port=${BACKEND_PORT}
+  3. Visit: https://${SLUG}.${domain}/
 EOF
       ;;
   esac
+
+  echo ""
+  echo "Optional: set this app as the root default on ${domain}"
+  echo "  sed -i 's|^DEFAULT_APP=.*|DEFAULT_APP=${SLUG}|' ~/workspace/.env && ~/workspace/scripts/deploy-nginx.sh"
 }
 
 main "$@"

@@ -40,7 +40,7 @@ This triggers because port conflicts are a common ops issue on this workspace.
 
 <example>
 Context: The dashboard is down.
-user: "judigot.com is broken"
+user: "workspace.judigot.com is broken"
 assistant: "I'll check if the dashboard Vite and API servers are running, restart them if needed, and verify nginx is proxying correctly."
 <commentary>
 This triggers because the dashboard has two processes (API on 3100, Vite on 3200) and nginx proxies to them.
@@ -116,14 +116,17 @@ This is a **single EC2 instance** running Ubuntu. Everything runs on one box:
 Browser → Nginx (:443 SSL)
   │
   ├─ judigot.com
-  │   ├─ /                    → Dashboard Vite (:3200)  ← app grid + DevBubble
-  │   ├─ /api/*               → Dashboard Hono API (:3100)
+  │   ├─ /                    → OpenCode (:4097)  ← catch-all
   │   ├─ /<slug>/             → App Vite frontend (frontend/fullstack)
   │   ├─ /<slug>/__vite_hmr   → Vite HMR websocket
   │   ├─ /<slug>/api/         → App backend API (fullstack only)
   │   └─ /<slug>/ws           → App websocket (fullstack + ws option)
   │
-  └─ opencode.judigot.com     → OpenCode (:4097, iframe-friendly, no X-Frame-Options)
+  ├─ opencode.judigot.com     → OpenCode (:4097, iframe-friendly, no X-Frame-Options)
+  │
+  └─ workspace.judigot.com
+      ├─ /api/*               → Dashboard Hono API (:3100)
+      └─ /*                   → Dashboard Vite (:3200)
 ```
 
 ## Services and Ports
@@ -251,8 +254,9 @@ sudo journalctl -u nginx -n 20   # Recent logs
 
 ```sh
 # All endpoints
-curl -s -o /dev/null -w "%{http_code}" https://judigot.com/                 # 200 (Dashboard)
+curl -s -o /dev/null -w "%{http_code}" https://judigot.com/                 # 401 (OpenCode, basic auth)
 curl -s -o /dev/null -w "%{http_code}" https://opencode.judigot.com/        # 401 (OpenCode, basic auth)
+curl -s -o /dev/null -w "%{http_code}" https://workspace.judigot.com/       # 200 (Dashboard)
 curl -s http://localhost:3100/api/apps | python3 -m json.tool               # JSON with app list
 
 # Per-app (replace slug)
@@ -375,7 +379,7 @@ The backend must serve routes under `/api/` — nginx strips the `/<slug>/api/` 
 
 ### Iframe embedding
 
-Apps loaded through the dashboard are displayed inside iframes. The nginx config for `opencode.judigot.com` removes `X-Frame-Options` and adds `Content-Security-Policy: frame-ancestors` to allow embedding from `judigot.com`. If a new app refuses to load in the iframe, check its response headers — it may be sending `X-Frame-Options: DENY`.
+Apps loaded through the dashboard are displayed inside iframes. The nginx config for `opencode.judigot.com` removes `X-Frame-Options` and adds `Content-Security-Policy: frame-ancestors` to allow embedding from `workspace.judigot.com`. If a new app refuses to load in the iframe, check its response headers — it may be sending `X-Frame-Options: DENY`.
 
 ## Dashboard Architecture
 
@@ -511,6 +515,7 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:3100/api/apps  # Dashboa
 
 # 5. Can we reach through nginx?
 curl -s -o /dev/null -w "%{http_code}" https://judigot.com/
+curl -s -o /dev/null -w "%{http_code}" https://workspace.judigot.com/
 
 # 6. Check .env
 cat ~/workspace/.env

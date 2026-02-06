@@ -145,6 +145,7 @@ prompt_secret  ANTHROPIC_API_KEY       "Anthropic API key"            "${ANTHROP
 # Derived values
 WWW_DOMAIN=${WWW_DOMAIN:-"www.${DOMAIN}"}
 OPENCODE_SUBDOMAIN=${OPENCODE_SUBDOMAIN:-"opencode.${DOMAIN}"}
+WORKSPACE_SUBDOMAIN=${WORKSPACE_SUBDOMAIN:-"workspace.${DOMAIN}"}
 OPENCODE_PORT=${OPENCODE_PORT:-4097}
 OPENCODE_BACKEND=${OPENCODE_BACKEND:-"127.0.0.1:${OPENCODE_PORT}"}
 API_BACKEND=${API_BACKEND:-"127.0.0.1:5000"}
@@ -158,6 +159,7 @@ cat > "$ENV_FILE" <<EOF
 DOMAIN=${DOMAIN}
 WWW_DOMAIN=${WWW_DOMAIN}
 OPENCODE_SUBDOMAIN=${OPENCODE_SUBDOMAIN}
+WORKSPACE_SUBDOMAIN=${WORKSPACE_SUBDOMAIN}
 OPENCODE_PORT=${OPENCODE_PORT}
 OPENCODE_BACKEND=${OPENCODE_BACKEND}
 OPENCODE_SERVER_USERNAME=${OPENCODE_SERVER_USERNAME}
@@ -181,7 +183,7 @@ step 3 "TLS certificates"
 SSL_CERT="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
 SSL_KEY="/etc/letsencrypt/live/${DOMAIN}/privkey.pem"
 
-ALL_DOMAINS="${DOMAIN},${WWW_DOMAIN},${OPENCODE_SUBDOMAIN}"
+ALL_DOMAINS="${DOMAIN},${WWW_DOMAIN},${OPENCODE_SUBDOMAIN},${WORKSPACE_SUBDOMAIN}"
 
 if [ -f "$SSL_CERT" ] && [ -f "$SSL_KEY" ]; then
   # Check if existing cert already covers all domains
@@ -196,11 +198,11 @@ if [ -f "$SSL_CERT" ] && [ -f "$SSL_KEY" ]; then
     sudo systemctl stop nginx 2>/dev/null || true
     if [ -n "$CERTBOT_EMAIL" ]; then
       sudo certbot certonly --standalone --expand \
-        -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" \
+        -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" -d "$WORKSPACE_SUBDOMAIN" \
         --non-interactive --agree-tos -m "$CERTBOT_EMAIL"
     else
       sudo certbot certonly --standalone --expand \
-        -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN"
+        -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" -d "$WORKSPACE_SUBDOMAIN"
     fi
     ok "Certs expanded"
   fi
@@ -209,11 +211,11 @@ else
   sudo systemctl stop nginx 2>/dev/null || true
   if [ -n "$CERTBOT_EMAIL" ]; then
     sudo certbot certonly --standalone \
-      -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" \
+      -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" -d "$WORKSPACE_SUBDOMAIN" \
       --non-interactive --agree-tos -m "$CERTBOT_EMAIL"
   else
     sudo certbot certonly --standalone \
-      -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN"
+      -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" -d "$WORKSPACE_SUBDOMAIN"
   fi
   ok "Certs issued"
 fi
@@ -225,7 +227,7 @@ step 4 "Nginx"
 DASHBOARD_PORT=${DASHBOARD_PORT:-3200}
 DASHBOARD_API_PORT=${DASHBOARD_API_PORT:-3100}
 
-export DOMAIN WWW_DOMAIN OPENCODE_SUBDOMAIN
+export DOMAIN WWW_DOMAIN OPENCODE_SUBDOMAIN WORKSPACE_SUBDOMAIN
 export SSL_CERT SSL_KEY
 export VITE_SCAFFOLDER_PORT API_BACKEND OPENCODE_BACKEND
 export WORKSPACE_ROOT VITE_APPS DASHBOARD_PORT DASHBOARD_API_PORT
@@ -377,8 +379,9 @@ bold "════════════════════════�
 bold "  Workspace is live"
 bold "═══════════════════════════════════════════════════════"
 printf '\n'
-cyan "  https://${DOMAIN}                → Dashboard"
+cyan "  https://${DOMAIN}                → OpenCode"
 cyan "  https://${OPENCODE_SUBDOMAIN}    → OpenCode (embeddable)"
+cyan "  https://${WORKSPACE_SUBDOMAIN}   → Dashboard"
 printf '\n'
 printf '  Auth: %s / ****\n' "$OPENCODE_SERVER_USERNAME"
 printf '\n'

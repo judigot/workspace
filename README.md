@@ -47,14 +47,15 @@ Then it automatically:
 
 | URL | What you see |
 |-----|-------------|
-| `https://judigot.com` | Dashboard — app grid with live status |
+| `https://judigot.com` | OpenCode web UI (basic auth) |
 | `https://opencode.judigot.com` | OpenCode (embeddable, used by the chat bubble) |
+| `https://workspace.judigot.com` | Dashboard — app grid with live status |
 
 ---
 
 ### Journey 2: Create an App via OpenCode
 
-Open OpenCode at `opencode.judigot.com` (or from the chat bubble inside any app). Ask it to create an app.
+Open OpenCode at `judigot.com` (or from the chat bubble inside any app). Ask it to create an app.
 
 > "Create a new React app called my-app"
 
@@ -66,7 +67,7 @@ OpenCode (via the `create-app` agent) will:
 
 Result:
 - `https://judigot.com/my-app/` is live
-- Dashboard at `judigot.com` shows it with a green status dot
+- Dashboard at `workspace.judigot.com` shows it with a green status dot
 - Tap the card to open it full-screen with the chat bubble
 
 Full-stack apps work too:
@@ -86,7 +87,7 @@ This is the core workflow. You're on your phone, looking at your app.
 
 ```
 ┌─────────────────────────┐
-│      judigot.com        │
+│  workspace.judigot.com  │
 │                         │
 │  ┌──────┐  ┌─────────┐ │
 │  │  OC  │  │scaffolder│ │
@@ -133,7 +134,7 @@ No editor. No terminal. No laptop. Just your phone and the running app.
 
 ### Journey 4: Open an Existing App
 
-Go to `judigot.com`. The dashboard shows all registered apps with live status:
+Go to `workspace.judigot.com`. The dashboard shows all registered apps with live status:
 
 - **Green dot** = dev server is running
 - **Gray dot** = dev server is stopped
@@ -179,34 +180,32 @@ Reads `.env` for defaults. Skips certs if they already cover all domains. Restar
 ## Architecture
 
 ```
-judigot.com
-        │
-        ▼
-   Nginx (:443, SSL)
-        │
-        ├─ /              → Dashboard Vite (:3200)  ← app grid + DevBubble
-        ├─ /api/*         → Dashboard Hono API (:3100)
-        │                   reads .env, checks port health
-        ├─ /<slug>/       → App Vite frontend (frontend/fullstack)
-        ├─ /<slug>/api/   → App backend API (fullstack only)
-        ├─ /<slug>/ws     → App websocket (fullstack + ws option)
-        └─ /<slug>/       → App backend (laravel)
-
-opencode.judigot.com → OpenCode (:4097, iframe-friendly)
+workspace.judigot.com                    judigot.com
+        │                                     │
+        ▼                                     ▼
+   Nginx (:443, SSL)                     Nginx (:443, SSL)
+        │                                     │
+        ├─ /api/*  → Hono API (:3100)         ├─ /              → OpenCode (:4097)
+        │            reads .env                ├─ /<slug>/       → App frontend
+        │            checks port health        ├─ /<slug>/api/   → App backend (fullstack)
+        │                                     ├─ /<slug>/ws     → App websocket (fullstack+ws)
+        └─ /*      → Dashboard Vite (:3200)   └─ /<slug>/       → App backend (laravel)
+                     App grid + DevBubble
+                                              opencode.judigot.com → OpenCode (iframe-friendly)
 ```
 
 **The DevBubble loop:**
 
 ```
-Phone → judigot.com → tap app → full-screen iframe
-                                        │
-                              tap bubble → OpenCode (fullscreen)
-                                        │
-                              "change X" → AI edits code
-                                        │
-                              Vite HMR → change visible instantly
-                                        │
-                              minimize → back to app
+Phone → workspace.judigot.com → tap app → full-screen iframe
+                                              │
+                                    tap bubble → OpenCode (fullscreen)
+                                              │
+                                    "change X" → AI edits code
+                                              │
+                                    Vite HMR → change visible instantly
+                                              │
+                                    minimize → back to app
 ```
 
 ## App Types

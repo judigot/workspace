@@ -100,7 +100,7 @@ export function DevBubble({
         y: e.clientY - posRef.current.y,
       };
       startRef.current = { x: e.clientX, y: e.clientY };
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      e.currentTarget.setPointerCapture(e.pointerId);
       setIsDragging(true);
     },
     [isOpen],

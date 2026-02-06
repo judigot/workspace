@@ -184,7 +184,7 @@ function useDrag(initialX: number, initialY: number) {
       // Read the *latest* position from the ref, not from a stale closure.
       offset.current = { x: e.clientX - posRef.current.x, y: e.clientY - posRef.current.y };
       pointerStart.current = { x: e.clientX, y: e.clientY };
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      e.currentTarget.setPointerCapture(e.pointerId);
     },
     [],
   );

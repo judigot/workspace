@@ -416,6 +416,7 @@ cat >> "$OUTPUT" <<EOF
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Accept-Language "en-US,en;q=0.9";
         proxy_read_timeout 86400s;
         proxy_buffering off;
         proxy_hide_header X-Frame-Options;

@@ -251,7 +251,7 @@ ${OPENCODE_ENV_LINES}
 ExecStart=${NODE_BIN}/opencode web --port ${OPENCODE_PORT} --hostname 127.0.0.1
 Restart=always
 RestartSec=5
-WorkingDirectory=${HOME}
+WorkingDirectory=${ROOT_DIR}
 
 [Install]
 WantedBy=multi-user.target

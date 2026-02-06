@@ -191,19 +191,19 @@ SSL_KEY="/etc/letsencrypt/live/${DOMAIN}/privkey.pem"
 
 ALL_DOMAINS="${DOMAIN},${WWW_DOMAIN},${OPENCODE_SUBDOMAIN},${WORKSPACE_SUBDOMAIN}"
 
-# Delete existing cert first so certbot never prompts about keep/renew/expand.
-# This makes every run a clean issue — true idempotence with zero prompts.
-if sudo certbot certificates --cert-name "$DOMAIN" 2>/dev/null | grep -q "Certificate Name: ${DOMAIN}"; then
-  warn "Deleting existing cert '${DOMAIN}' for clean re-issue"
-  sudo certbot delete --cert-name "$DOMAIN" --non-interactive
+# Idempotent TLS: if cert files already exist, skip certbot entirely.
+# This avoids all interactive prompts and rate-limit issues on reruns.
+if [ -f "$SSL_CERT" ] && [ -f "$SSL_KEY" ]; then
+  ok "Certs already exist — skipping certbot"
+else
+  warn "No certs found — issuing via certbot..."
+  sudo systemctl stop nginx 2>/dev/null || true
+  sudo certbot certonly --standalone \
+    --cert-name "$DOMAIN" \
+    -d "$ALL_DOMAINS" \
+    --non-interactive --agree-tos --no-eff-email -m "$CERTBOT_EMAIL"
+  ok "Certs ready"
 fi
-
-sudo systemctl stop nginx 2>/dev/null || true
-sudo certbot certonly --standalone \
-  --cert-name "$DOMAIN" \
-  -d "$ALL_DOMAINS" \
-  --non-interactive --agree-tos --no-eff-email -m "$CERTBOT_EMAIL"
-ok "Certs ready"
 
 # ─── Step 4: Nginx ───────────────────────────────────────────────────────────
 

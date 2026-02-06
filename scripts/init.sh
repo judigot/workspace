@@ -264,8 +264,8 @@ sudo systemctl restart opencode
 # Wait for opencode to be ready
 printf '  Waiting for OpenCode on port %s' "$OPENCODE_PORT"
 for i in $(seq 1 30); do
-  if curl -sf -o /dev/null "http://127.0.0.1:${OPENCODE_PORT}" 2>/dev/null || \
-     curl -sf -o /dev/null -w '%{http_code}' "http://127.0.0.1:${OPENCODE_PORT}" 2>/dev/null | grep -q '401'; then
+  HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${OPENCODE_PORT}" 2>/dev/null || true)
+  if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "401" ]; then
     printf '\n'
     ok "OpenCode is running on port ${OPENCODE_PORT}"
     break

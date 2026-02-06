@@ -193,7 +193,8 @@ ALL_DOMAINS="${DOMAIN},${WWW_DOMAIN},${OPENCODE_SUBDOMAIN},${WORKSPACE_SUBDOMAIN
 
 # Idempotent TLS: if cert files already exist, skip certbot entirely.
 # This avoids all interactive prompts and rate-limit issues on reruns.
-if [ -f "$SSL_CERT" ] && [ -f "$SSL_KEY" ]; then
+# Use sudo for the check — letsencrypt/live/ is root-only.
+if sudo test -f "$SSL_CERT" && sudo test -f "$SSL_KEY"; then
   ok "Certs already exist — skipping certbot"
 else
   warn "No certs found — issuing via certbot..."

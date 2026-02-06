@@ -405,13 +405,6 @@ server {
 
 EOF
 
-if [ -n "$OPENCODE_SERVER_USERNAME" ] && [ -n "$OPENCODE_SERVER_PASSWORD" ]; then
-  cat >> "$OUTPUT" <<EOF
-    auth_basic "OpenCode";
-    auth_basic_user_file ${OPENCODE_HTPASSWD_FILE};
-EOF
-fi
-
 cat >> "$OUTPUT" <<EOF
 
     location / {

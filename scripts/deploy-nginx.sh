@@ -15,19 +15,7 @@ fi
 
 OUTPUT_PATH=${OUTPUT_PATH:-"${ROOT_DIR}/dist/nginx.conf"}
 TARGET_PATH=${TARGET_PATH:-"/etc/nginx/sites-available/default"}
-OPENCODE_HTPASSWD_FILE=${OPENCODE_HTPASSWD_FILE:-"/etc/nginx/.htpasswd-opencode"}
-
 "${SCRIPT_DIR}/generate-nginx.sh" "${OUTPUT_PATH}"
-
-# Create/update OpenCode basic auth file for nginx (if credentials are set)
-if [ -n "${OPENCODE_SERVER_USERNAME:-}" ] && [ -n "${OPENCODE_SERVER_PASSWORD:-}" ]; then
-  HASHED_PASSWORD=$(openssl passwd -apr1 "${OPENCODE_SERVER_PASSWORD}")
-  TMP_HTPASSWD=$(mktemp)
-  printf '%s:%s\n' "${OPENCODE_SERVER_USERNAME}" "${HASHED_PASSWORD}" > "${TMP_HTPASSWD}"
-  sudo mkdir -p "$(dirname "${OPENCODE_HTPASSWD_FILE}")"
-  sudo install -m 640 -o root -g www-data "${TMP_HTPASSWD}" "${OPENCODE_HTPASSWD_FILE}"
-  rm -f "${TMP_HTPASSWD}"
-fi
 
 # Copy DevBubble widget to static serving directory
 WIDGET_SRC="${ROOT_DIR}/dist/dev-bubble.js"

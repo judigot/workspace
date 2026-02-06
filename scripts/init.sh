@@ -231,6 +231,8 @@ SERVICE_FILE="/etc/systemd/system/opencode.service"
 
 # Build environment lines
 OPENCODE_ENV_LINES="Environment=\"PATH=${NODE_BIN}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"
+Environment=\"LANG=en_US.UTF-8\"
+Environment=\"LC_ALL=en_US.UTF-8\"
 Environment=\"OPENCODE_SERVER_USERNAME=${OPENCODE_SERVER_USERNAME}\"
 Environment=\"OPENCODE_SERVER_PASSWORD=${OPENCODE_SERVER_PASSWORD}\""
 

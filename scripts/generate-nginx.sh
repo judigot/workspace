@@ -7,7 +7,6 @@ ROOT_DIR=$(cd "${SCRIPT_DIR}/.." && pwd)
 DOMAIN=${DOMAIN:-"judigot.com"}
 WWW_DOMAIN=${WWW_DOMAIN:-"www.${DOMAIN}"}
 OPENCODE_SUBDOMAIN=${OPENCODE_SUBDOMAIN:-"opencode.${DOMAIN}"}
-WORKSPACE_SUBDOMAIN=${WORKSPACE_SUBDOMAIN:-"workspace.${DOMAIN}"}
 
 SSL_CERT=${SSL_CERT:-"/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"}
 SSL_KEY=${SSL_KEY:-"/etc/letsencrypt/live/${DOMAIN}/privkey.pem"}
@@ -228,7 +227,7 @@ for app in $APPS; do
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-XSS-Protection "1; mode=block" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-        add_header Content-Security-Policy "frame-ancestors https://${WORKSPACE_SUBDOMAIN}" always;
+        add_header Content-Security-Policy "frame-ancestors https://${DOMAIN}" always;
         add_header X-Frame-Options "" always;
         proxy_buffering off;
     }
@@ -301,7 +300,7 @@ EOF
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_set_header X-Forwarded-Port \$server_port;
         proxy_set_header X-Forwarded-Host \$host;
-        add_header Content-Security-Policy "frame-ancestors https://${WORKSPACE_SUBDOMAIN}" always;
+        add_header Content-Security-Policy "frame-ancestors https://${DOMAIN}" always;
         add_header X-Frame-Options "" always;
         proxy_buffering off;
     }
@@ -321,7 +320,7 @@ EOF
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_set_header X-Forwarded-Port \$server_port;
         proxy_set_header X-Forwarded-Host \$host;
-        add_header Content-Security-Policy "frame-ancestors https://${WORKSPACE_SUBDOMAIN}" always;
+        add_header Content-Security-Policy "frame-ancestors https://${DOMAIN}" always;
         add_header X-Frame-Options "" always;
         proxy_buffering off;
     }
@@ -332,8 +331,18 @@ done
 
 cat >> "$OUTPUT" <<EOF
 
+    location /api/ {
+        proxy_pass http://dashboard_api/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
     location / {
-        proxy_pass http://opencode_backend;
+        proxy_pass http://dashboard_backend;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection \$connection_upgrade;
@@ -366,7 +375,7 @@ server {
 
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-    add_header Content-Security-Policy "frame-ancestors https://${WORKSPACE_SUBDOMAIN}" always;
+    add_header Content-Security-Policy "frame-ancestors https://${DOMAIN}" always;
 
     location / {
         proxy_pass http://opencode_backend;
@@ -383,40 +392,6 @@ server {
     }
 }
 
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name ${WORKSPACE_SUBDOMAIN};
-
-    ssl_certificate ${SSL_CERT};
-    ssl_certificate_key ${SSL_KEY};
-
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-
-    location /api/ {
-        proxy_pass http://dashboard_api/api/;
-        proxy_http_version 1.1;
-        proxy_set_header Connection "";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-
-    location / {
-        proxy_pass http://dashboard_backend;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \$connection_upgrade;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 86400s;
-        proxy_buffering off;
-    }
-}
 EOF
 
 echo "Wrote nginx config to ${OUTPUT}"

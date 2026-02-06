@@ -216,10 +216,10 @@ Phone → workspace.judigot.com → tap app → full-screen iframe
 
 ## Repos
 
-| Repo | Purpose | Lives at |
-|------|---------|----------|
-| `judigot/workspace` | Nginx config, init wizard, scripts, agents | `~/workspace` |
-| `judigot/dashboard` | Dashboard React app + Hono API + DevBubble package | `~/dashboard` |
+| Directory | Purpose |
+|-----------|---------|
+| `~/workspace` | Monorepo root — nginx config, init wizard, scripts, agents |
+| `~/workspace/dashboard` | Dashboard React app + Hono API + DevBubble package |
 
 ## Scripts
 

@@ -297,15 +297,9 @@ done
 
 step 6 "Dashboard app"
 
-DASHBOARD_DIR="${HOME}/dashboard"
+DASHBOARD_DIR="${ROOT_DIR}/dashboard"
 
-if [ -d "${DASHBOARD_DIR}/.git" ]; then
-  ok "Dashboard repo exists at ${DASHBOARD_DIR}"
-else
-  warn "Cloning dashboard..."
-  git clone git@github.com:judigot/dashboard.git "${DASHBOARD_DIR}"
-  ok "Cloned dashboard"
-fi
+ok "Dashboard lives at ${DASHBOARD_DIR} (part of workspace repo)"
 
 # Install deps
 if [ ! -d "${DASHBOARD_DIR}/node_modules" ]; then

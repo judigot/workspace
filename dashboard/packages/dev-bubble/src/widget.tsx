@@ -21,6 +21,9 @@ import React, {
 import { createRoot } from "react-dom/client";
 import { WorkspaceShell, WORKSPACE_SHELL_CSS } from "./WorkspaceShell";
 
+const BUBBLE_SIZE = 60;
+const BUBBLE_MARGIN = 12;
+
 // ---------------------------------------------------------------------------
 // Config from script tag
 // ---------------------------------------------------------------------------
@@ -177,8 +180,8 @@ function useDrag(initialX: number, initialY: number) {
       if (!dragging.current) return;
       hasDragged.current = true;
       setPos({
-        x: Math.max(0, Math.min(window.innerWidth - 60, e.clientX - offset.current.x)),
-        y: Math.max(0, Math.min(window.innerHeight - 60, e.clientY - offset.current.y)),
+        x: Math.max(BUBBLE_MARGIN, Math.min(window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN, e.clientX - offset.current.x)),
+        y: Math.max(BUBBLE_MARGIN, Math.min(window.innerHeight - BUBBLE_SIZE - BUBBLE_MARGIN, e.clientY - offset.current.y)),
       });
     },
     [],
@@ -191,14 +194,21 @@ function useDrag(initialX: number, initialY: number) {
   useEffect(() => {
     const handler = () =>
       setPos((p) => ({
-        x: Math.min(p.x, window.innerWidth - 84),
-        y: Math.min(p.y, window.innerHeight - 84),
+        x: Math.max(BUBBLE_MARGIN, Math.min(p.x, window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN)),
+        y: Math.max(BUBBLE_MARGIN, Math.min(p.y, window.innerHeight - BUBBLE_SIZE - BUBBLE_MARGIN)),
       }));
     window.addEventListener("resize", handler);
     return () => window.removeEventListener("resize", handler);
   }, []);
 
-  return { pos, hasDragged, onPointerDown, onPointerMove, onPointerUp };
+  const snapToTopRight = useCallback(() => {
+    setPos({
+      x: window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN,
+      y: BUBBLE_MARGIN,
+    });
+  }, []);
+
+  return { pos, hasDragged, onPointerDown, onPointerMove, onPointerUp, snapToTopRight };
 }
 
 // ---------------------------------------------------------------------------
@@ -206,8 +216,8 @@ function useDrag(initialX: number, initialY: number) {
 // ---------------------------------------------------------------------------
 const DevBubbleWidget: FC = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const { pos, hasDragged, onPointerDown, onPointerMove, onPointerUp } =
-    useDrag(window.innerWidth - 84, window.innerHeight - 84);
+  const { pos, hasDragged, onPointerDown, onPointerMove, onPointerUp, snapToTopRight } =
+    useDrag(window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN, BUBBLE_MARGIN);
 
   const handleBubbleClick = useCallback(() => {
     if (!hasDragged.current) setIsOpen(true);
@@ -227,7 +237,10 @@ const DevBubbleWidget: FC = () => {
       <button
         className="db-header-btn"
         aria-label="Minimize"
-        onClick={() => setIsOpen(false)}
+        onClick={() => {
+          snapToTopRight();
+          setIsOpen(false);
+        }}
       >
         <IconMinimize />
       </button>

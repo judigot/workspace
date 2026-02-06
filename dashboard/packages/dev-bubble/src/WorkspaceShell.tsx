@@ -97,6 +97,8 @@ export const WorkspaceShell: FC<WorkspaceShellProps> = ({
 
       {/* App strip */}
       <div className="ws-strip">
+        <span className="ws-strip-label">Apps</span>
+
         {loading && (
           <span className="ws-strip-loading">Loading...</span>
         )}
@@ -149,6 +151,10 @@ export const WORKSPACE_SHELL_CSS = `
     font-family: system-ui, -apple-system, sans-serif;
     color: #f5f7ff;
   }
+  .ws-shell-fullpage {
+    height: 100vh;
+    height: 100dvh;
+  }
 
   /* ── App strip ── */
   .ws-strip {
@@ -165,6 +171,16 @@ export const WORKSPACE_SHELL_CSS = `
     -webkit-overflow-scrolling: touch;
   }
   .ws-strip::-webkit-scrollbar { display: none; }
+
+  .ws-strip-label {
+    color: rgba(255,255,255,0.65);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0 4px 0 2px;
+    flex-shrink: 0;
+  }
 
   .ws-strip-loading {
     color: #8891a8;

@@ -177,7 +177,7 @@ The dashboard picks up new apps automatically (reads `.env` live).
 cd ~/workspace && ./scripts/init.sh
 ```
 
-Reads `.env` for defaults. Skips certs if they already cover all domains. Restarts services cleanly.
+Reads `.env` for defaults. Skips certs if they already exist on disk. Restarts services cleanly.
 
 ---
 

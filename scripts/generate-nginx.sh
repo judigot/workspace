@@ -301,6 +301,8 @@ EOF
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_set_header X-Forwarded-Port \$server_port;
         proxy_set_header X-Forwarded-Host \$host;
+        add_header Content-Security-Policy "frame-ancestors https://${WORKSPACE_SUBDOMAIN}" always;
+        add_header X-Frame-Options "" always;
         proxy_buffering off;
     }
 EOF
@@ -319,6 +321,8 @@ EOF
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_set_header X-Forwarded-Port \$server_port;
         proxy_set_header X-Forwarded-Host \$host;
+        add_header Content-Security-Policy "frame-ancestors https://${WORKSPACE_SUBDOMAIN}" always;
+        add_header X-Frame-Options "" always;
         proxy_buffering off;
     }
 EOF

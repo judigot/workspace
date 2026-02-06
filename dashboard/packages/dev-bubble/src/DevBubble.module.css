@@ -184,6 +184,71 @@
   background: #57606a;
 }
 
+/* URL bar for app navigation */
+.urlBar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 6px 10px;
+  background: #1a1a2e;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.urlBarIcon {
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.4);
+  margin-right: 8px;
+}
+
+.urlBarInput {
+  flex: 1;
+  background: #0f0f1a;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  outline: none;
+  min-height: 36px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.urlBarInput:focus {
+  border-color: #667eea;
+  color: white;
+}
+
+.urlBarGo {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  margin-left: 6px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, color 0.15s;
+}
+
+.urlBarGo:active {
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+}
+
+@media (hover: hover) {
+  .urlBarGo:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: white;
+  }
+}
+
 .iframe {
   flex: 1;
   width: 100%;

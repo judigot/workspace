@@ -19,6 +19,7 @@ function App() {
   const [config, setConfig] = useState<IConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeApp, setActiveApp] = useState<IApp | null>(null);
+  const [appFrameUrl, setAppFrameUrl] = useState<string>("");
 
   const fetchApps = useCallback(async () => {
     try {
@@ -62,18 +63,23 @@ function App() {
     return (
       <div className="app-view">
         <iframe
-          src={activeApp.url}
+          src={appFrameUrl}
           className="app-view-frame"
           title={activeApp.slug}
           allow="clipboard-read; clipboard-write"
         />
         <DevBubble
           url={opencodeUrl}
+          appUrl={appFrameUrl}
+          onNavigate={(newUrl) => setAppFrameUrl(newUrl)}
           apps={bubbleApps}
           activeSlug={activeApp.slug}
           onSelectApp={(app) => {
             const found = config?.apps.find((a) => a.slug === app.slug);
-            if (found) setActiveApp(found);
+            if (found) {
+              setActiveApp(found);
+              setAppFrameUrl(found.url);
+            }
           }}
           onGoHome={() => setActiveApp(null)}
         />
@@ -126,6 +132,7 @@ function App() {
               className="app-card"
               onClick={() => {
                 setActiveApp(appItem);
+                setAppFrameUrl(appItem.url);
               }}
             >
               <div className="app-card-icon">

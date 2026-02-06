@@ -10,6 +10,10 @@ export interface IBubbleApp {
 interface IDevBubbleProps {
   /** URL to load in the OpenCode iframe */
   url?: string;
+  /** Current app iframe URL (shown in the URL bar) */
+  appUrl?: string;
+  /** Called when user navigates to a new URL via the URL bar */
+  onNavigate?: (url: string) => void;
   /** List of workspace apps to show in the nav */
   apps?: IBubbleApp[];
   /** Currently active app slug (highlighted in nav) */
@@ -27,6 +31,8 @@ interface IPosition {
 
 export function DevBubble({
   url = "https://opencode.judigot.com",
+  appUrl = "",
+  onNavigate,
   apps = [],
   activeSlug = null,
   onSelectApp,
@@ -37,7 +43,14 @@ export function DevBubble({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<IPosition>({ x: 0, y: 0 });
   const [hasDragged, setHasDragged] = useState(false);
+  const [urlInput, setUrlInput] = useState(appUrl);
   const bubbleRef = useRef<HTMLButtonElement>(null);
+  const urlInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync URL bar when app changes externally
+  useEffect(() => {
+    setUrlInput(appUrl);
+  }, [appUrl]);
 
   useEffect(() => {
     const updatePosition = () => {
@@ -181,6 +194,42 @@ export function DevBubble({
               </button>
             ))}
           </div>
+        )}
+
+        {/* URL bar for app navigation */}
+        {onNavigate !== undefined && appUrl !== "" && (
+          <form
+            className={styles.urlBar}
+            onSubmit={(e) => {
+              e.preventDefault();
+              const trimmed = urlInput.trim();
+              if (trimmed !== "" && trimmed !== appUrl) {
+                onNavigate(trimmed);
+              }
+              urlInputRef.current?.blur();
+            }}
+          >
+            <svg className={styles.urlBarIcon} viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
+            </svg>
+            <input
+              ref={urlInputRef}
+              type="text"
+              className={styles.urlBarInput}
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              onFocus={(e) => e.target.select()}
+              spellCheck={false}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+            />
+            <button type="submit" className={styles.urlBarGo} aria-label="Navigate">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" />
+              </svg>
+            </button>
+          </form>
         )}
 
         {/* OpenCode iframe */}

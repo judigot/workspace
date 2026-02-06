@@ -5,10 +5,16 @@ const style = document.createElement("style");
 style.textContent = WORKSPACE_SHELL_CSS;
 document.head.appendChild(style);
 
+// Extract base domain (e.g. "judigot.com" from "workspace.judigot.com" or "www.judigot.com")
+const getBaseDomain = (hostname: string): string => {
+  const parts = hostname.split(".");
+  return parts.length > 2 ? parts.slice(-2).join(".") : hostname;
+};
+
 const OPENCODE_URL =
   window.location.hostname === "localhost"
     ? "http://localhost:4097"
-    : `https://opencode.${window.location.hostname}/`;
+    : `https://opencode.${getBaseDomain(window.location.hostname)}/`;
 
 function App() {
   return (

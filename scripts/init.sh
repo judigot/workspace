@@ -211,6 +211,7 @@ else
   warn "No certs found — issuing via certbot..."
   sudo systemctl stop nginx 2>/dev/null || true
   sudo certbot certonly --standalone \
+    --cert-name "$DOMAIN" --keep-until-expiring \
     -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" -d "$WORKSPACE_SUBDOMAIN" \
     --non-interactive --agree-tos --no-eff-email -m "$CERTBOT_EMAIL"
   ok "Certs issued"

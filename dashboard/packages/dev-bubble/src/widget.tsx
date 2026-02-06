@@ -207,11 +207,15 @@ function useDrag(initialX: number, initialY: number) {
     [],
   );
 
+  /** Returns `true` if the gesture was a drag, `false` if it was a tap. */
   const onPointerUp = useCallback(
-    (e: ReactPointerEvent<HTMLButtonElement>) => {
-      if (!dragging.current) return;
+    (e: ReactPointerEvent<HTMLButtonElement>): boolean => {
+      if (!dragging.current) return false;
       e.preventDefault();
+      const wasDrag = hasDragged.current;
       dragging.current = false;
+      hasDragged.current = false;
+      return wasDrag;
     },
     [],
   );
@@ -257,12 +261,11 @@ const DevBubbleWidget: FC = () => {
 
   const handlePointerUp = useCallback(
     (e: ReactPointerEvent<HTMLButtonElement>) => {
-      const wasDrag = hasDragged.current;
-      onPointerUp(e);
+      const wasDrag = onPointerUp(e);
       // Open only on tap, not after a drag.
       if (!wasDrag) setIsOpen(true);
     },
-    [hasDragged, onPointerUp],
+    [onPointerUp],
   );
 
   const panelHeader = (

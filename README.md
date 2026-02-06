@@ -1,6 +1,6 @@
 # Workspace
 
-Nginx reverse proxy + OpenCode + dashboard for a fresh EC2 instance.
+Mobile-first development workspace. Vibe code from your phone — open your app, tap the chat bubble, tell the AI what to change, see it live.
 
 ## User Journeys
 
@@ -23,8 +23,6 @@ useaws
 installgithubcli
 ```
 
-This installs nginx, certbot, node, bun, nvm, gh, and all system dependencies.
-
 **Step 2 — Clone and run init**
 
 ```sh
@@ -36,117 +34,144 @@ cd ~/workspace
 The wizard prompts for:
 - Domain (default: `judigot.com`)
 - OpenCode username and password (basic auth)
-- Anthropic API key
+- Anthropic API key (optional — skip if already configured)
 
 Then it automatically:
 1. Installs opencode (via `installOpenCode` from `.devrc`)
-2. Issues TLS certificates (`certbot --standalone` for all subdomains)
+2. Issues TLS certificates (`certbot --standalone`)
 3. Generates and deploys the nginx config with SSL
 4. Creates and starts the `opencode.service` systemd unit
-5. Clones `judigot/dashboard`, installs deps, starts the dashboard API and Vite dev server as systemd services
+5. Clones `judigot/dashboard`, installs deps, starts the dashboard services
 
 **Step 3 — Open the browser**
 
 | URL | What you see |
 |-----|-------------|
-| `https://judigot.com` | OpenCode web UI (basic auth prompt) |
-| `https://opencode.judigot.com` | OpenCode (embeddable, used by the dashboard) |
-| `https://workspace.judigot.com` | Dashboard — app grid with live status + draggable OpenCode chat bubble |
-
-**Step 4 — Verify**
-
-```sh
-./scripts/health-check.sh
-```
+| `https://judigot.com` | OpenCode web UI (basic auth) |
+| `https://opencode.judigot.com` | OpenCode (embeddable, used by the chat bubble) |
+| `https://workspace.judigot.com` | Dashboard — app grid with live status |
 
 ---
 
-### Journey 2: Create a New App via OpenCode
+### Journey 2: Create an App via OpenCode
 
-You're in OpenCode (either at `judigot.com` or via the chat bubble on the dashboard). You ask it to create an app.
-
-**What you say:**
+Open OpenCode at `judigot.com` (or from the chat bubble inside any app). Ask it to create an app.
 
 > "Create a new React app called my-app"
 
-**What OpenCode does** (via the `vite-nginx-playground` agent):
+OpenCode (via the `create-app` agent) will:
+1. Scaffold `~/my-app` with Vite + React + TypeScript
+2. Configure `vite.config.ts` with the correct base path, HMR, and port
+3. Run `~/workspace/scripts/add-app.sh my-app frontend 5177`
+4. Start the dev server
 
-1. Scaffolds `~/my-app` with Vite + React + TypeScript
-2. Configures `vite.config.ts` with the correct `base`, `hmr.path`, and `port`
-3. Runs `~/workspace/scripts/add-app.sh my-app 5177`
-   - Adds `my-app:5177` to `VITE_APPS` in `~/workspace/.env`
-   - Regenerates and reloads the nginx config
-   - Redeploys the dashboard (so the new app appears in the grid)
-4. Starts the dev server
+Result:
+- `https://judigot.com/my-app/` is live
+- Dashboard at `workspace.judigot.com` shows it with a green status dot
+- Tap the card to open it full-screen with the chat bubble
 
-**Result:**
+Full-stack apps work too:
 
-- `https://judigot.com/my-app/` serves the new app directly
-- `https://workspace.judigot.com` shows it in the dashboard with a live status dot
-- Click the app card to view it full-page with the OpenCode chat bubble
-
----
-
-### Journey 3: Open an Existing App with the Chat Bubble
-
-You go to `workspace.judigot.com` and see the dashboard:
-
-```
-┌──────────────────────────────────────────┐
-│  Workspace                               │
-│  judigot.com                             │
-│                                          │
-│  ┌──────┐  ┌──────────┐  ┌─────────┐   │
-│  │  OC  │  │playground │  │ new-app │   │
-│  │  ●   │  │  ●       │  │  ○      │   │
-│  └──────┘  └──────────┘  └─────────┘   │
-│                                          │
-│                              🟣 DevBubble│
-└──────────────────────────────────────────┘
-  ● = running    ○ = stopped
-```
-
-- Click **playground** → full-page iframe of the app with a top bar (back button) and the draggable chat bubble
-- Click **OC** → opens OpenCode in a new tab
-- Click the **DevBubble** (purple circle, bottom-right) → fullscreen OpenCode overlay, drag it around like a Messenger bubble, tap to expand, minimize to shrink back
-
----
-
-### Journey 4: Re-run init (Idempotent)
-
-Something broke, or you changed your domain. Just re-run:
+> "Create a full-stack app called my-api with a Hono backend"
 
 ```sh
-cd ~/workspace
-./scripts/init.sh
+# What the agent runs:
+~/workspace/scripts/add-app.sh my-api fullstack 3000 5000 ws
 ```
-
-It reads `.env` for existing values (shows them as defaults), skips cert issuance if certs already cover all domains, and restarts services cleanly.
 
 ---
 
-### Journey 5: Add an App Manually (Without OpenCode)
+### Journey 3: Vibe Code from Your Phone
+
+This is the core workflow. You're on your phone, looking at your app.
+
+```
+┌─────────────────────────┐
+│  workspace.judigot.com  │
+│                         │
+│  ┌──────┐  ┌─────────┐ │
+│  │  OC  │  │scaffolder│ │
+│  │  ●   │  │  ●      │ │
+│  └──────┘  └─────────┘ │
+│                         │
+└─────────────────────────┘
+```
+
+**Step 1** — Tap the scaffolder card. Your app loads full-screen.
+
+```
+┌─────────────────────────┐
+│                         │
+│                         │
+│     Your app fills      │
+│     the entire screen   │
+│                         │
+│                         │
+│  ←              🟣      │
+│  back           bubble  │
+└─────────────────────────┘
+```
+
+**Step 2** — You see something you want to change. Tap the chat bubble (bottom-right). OpenCode opens fullscreen.
+
+**Step 3** — Tell it what you want:
+
+> "Change the header background to red"
+
+OpenCode edits the code. Vite HMR picks up the change. **You see it instantly.**
+
+**Step 4** — Tap minimize. You're back to your app with the change applied. Keep going.
+
+This is the loop:
+
+```
+Look at app → Tap bubble → Tell AI what to change → See it live → Repeat
+```
+
+No editor. No terminal. No laptop. Just your phone and the running app.
+
+---
+
+### Journey 4: Open an Existing App
+
+Go to `workspace.judigot.com`. The dashboard shows all registered apps with live status:
+
+- **Green dot** = dev server is running
+- **Gray dot** = dev server is stopped
+- **OC card** = opens OpenCode in a new tab
+
+Tap any app card to view it full-screen. Two floating elements appear:
+- **Back button** (top-left, small circle) — returns to dashboard
+- **Chat bubble** (bottom-right, draggable) — opens OpenCode
+
+The bubble is draggable like a Messenger chat head. Drag it out of the way, tap to expand, minimize to shrink back.
+
+---
+
+### Journey 5: Add an App Manually
 
 ```sh
-# 1. Register the app with nginx
-~/workspace/scripts/add-app.sh dashboard 5178
+# Frontend only (Vite)
+~/workspace/scripts/add-app.sh my-app 5177
 
-# 2. Create the Vite app
-cd ~ && bun create vite dashboard --template react-ts
+# Full-stack (Vite frontend + API backend + websockets)
+~/workspace/scripts/add-app.sh my-api fullstack 3000 5000 ws
 
-# 3. Configure vite.config.ts
-#    base: "/dashboard/"
-#    server.hmr.path: "/dashboard/__vite_hmr"
-#    server.hmr.protocol: "wss"
-#    server.port: 5178
-#    server.strictPort: true
-
-# 4. Start the dev server
-cd ~/dashboard && bun run dev --host 0.0.0.0 --port 5178
-
-# 5. Visit
-open https://judigot.com/dashboard/
+# Laravel
+~/workspace/scripts/add-app.sh admin laravel 8000
 ```
+
+The dashboard picks up new apps automatically (reads `.env` live).
+
+---
+
+### Journey 6: Re-run init (Idempotent)
+
+```sh
+cd ~/workspace && ./scripts/init.sh
+```
+
+Reads `.env` for defaults. Skips certs if they already cover all domains. Restarts services cleanly.
 
 ---
 
@@ -159,15 +184,35 @@ workspace.judigot.com                    judigot.com
    Nginx (:443, SSL)                     Nginx (:443, SSL)
         │                                     │
         ├─ /api/*  → Hono API (:3100)         ├─ /              → OpenCode (:4097)
-        │            reads .env                ├─ /scaffolder/   → Vite (:3000)
-        │            checks port health        ├─ /playground/   → Vite (:5175)
-        │                                     ├─ /new-app/      → Vite (:5176)
-        └─ /*      → Dashboard Vite (:3200)   └─ /<slug>/       → Vite (:<port>)
-                     React app grid
-                     DevBubble → opencode.judigot.com (iframe)
-
-opencode.judigot.com → OpenCode (:4097, iframe-friendly CSP headers)
+        │            reads .env                ├─ /<slug>/       → App frontend
+        │            checks port health        ├─ /<slug>/api/   → App backend (fullstack)
+        │                                     ├─ /<slug>/ws     → App websocket (fullstack+ws)
+        └─ /*      → Dashboard Vite (:3200)   └─ /<slug>/       → App backend (laravel)
+                     App grid + DevBubble
+                                              opencode.judigot.com → OpenCode (iframe-friendly)
 ```
+
+**The DevBubble loop:**
+
+```
+Phone → workspace.judigot.com → tap app → full-screen iframe
+                                              │
+                                    tap bubble → OpenCode (fullscreen)
+                                              │
+                                    "change X" → AI edits code
+                                              │
+                                    Vite HMR → change visible instantly
+                                              │
+                                    minimize → back to app
+```
+
+## App Types
+
+| Type | Command | Nginx routes generated |
+|------|---------|----------------------|
+| `frontend` | `add-app.sh my-app 5177` | `/<slug>/` → Vite, `/<slug>/__vite_hmr` → HMR |
+| `fullstack` | `add-app.sh my-api fullstack 3000 5000 ws` | Above + `/<slug>/api/` → backend, `/<slug>/ws` → websocket |
+| `laravel` | `add-app.sh admin laravel 8000` | `/<slug>/` → PHP backend |
 
 ## Repos
 
@@ -181,8 +226,8 @@ opencode.judigot.com → OpenCode (:4097, iframe-friendly CSP headers)
 | Script | Purpose |
 |--------|---------|
 | `scripts/init.sh` | Full setup wizard — run once after clone |
-| `scripts/add-app.sh` | Add a new Vite app slug:port, redeploy nginx + dashboard |
-| `scripts/deploy-nginx.sh` | Regenerate + deploy nginx config |
+| `scripts/add-app.sh` | Register a new app (frontend/fullstack/laravel) and redeploy nginx |
+| `scripts/deploy-nginx.sh` | Regenerate + deploy nginx config from `.env` |
 | `scripts/generate-nginx.sh` | Generate nginx.conf from env vars |
 | `scripts/health-check.sh` | Smoke test all endpoints |
 
@@ -196,9 +241,7 @@ All config lives in `.env` (created by `init.sh`). See `.env.example` for refere
 | `OPENCODE_PORT` | `4097` | OpenCode listening port |
 | `OPENCODE_SERVER_USERNAME` | — | Basic auth username |
 | `OPENCODE_SERVER_PASSWORD` | — | Basic auth password |
-| `ANTHROPIC_API_KEY` | — | API key for OpenCode |
-| `VITE_APPS` | `playground:5175 new-app:5176` | Vite apps (space-separated slug:port) |
+| `ANTHROPIC_API_KEY` | — | API key for OpenCode (optional in init) |
+| `APPS` | `""` | Registered apps (`slug:type:port[:backend_port[:options]]`) |
 | `DASHBOARD_PORT` | `3200` | Dashboard Vite dev server port |
 | `DASHBOARD_API_PORT` | `3100` | Dashboard Hono API port |
-| `API_BACKEND` | `127.0.0.1:5000` | Scaffolder API backend |
-| `VITE_SCAFFOLDER_PORT` | `3000` | Scaffolder dev server port |

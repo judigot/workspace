@@ -1,0 +1,243 @@
+@use 'tailwindcss';
+
+:root {
+  --bg: #0f1115;
+  --card: #1a1d26;
+  --card-hover: #222634;
+  --card-active: #2a2e3e;
+  --border: rgba(255, 255, 255, 0.08);
+  --text: #f5f7ff;
+  --muted: #8891a8;
+  --accent: #667eea;
+  --accent-2: #764ba2;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Dashboard ── */
+
+.dashboard {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background:
+    radial-gradient(circle at top left, #1b2140 0%, #0f1115 55%),
+    linear-gradient(135deg, rgba(102, 126, 234, 0.04), transparent 40%);
+}
+
+.dashboard-content {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: clamp(24px, 6vw, 48px) clamp(16px, 4vw, 24px);
+}
+
+.dashboard-header {
+  margin-bottom: clamp(24px, 5vw, 40px);
+}
+
+.dashboard-header h1 {
+  margin: 0 0 6px;
+  font-size: clamp(1.5rem, 5vw, 2rem);
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--text), var(--muted));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+
+/* ── Error ── */
+
+.error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 24px;
+  background: rgba(255, 71, 87, 0.1);
+  border: 1px solid rgba(255, 71, 87, 0.3);
+  border-radius: 12px;
+  color: #ff6b7a;
+  font-size: 0.875rem;
+}
+
+.error-banner button {
+  border: 1px solid rgba(255, 71, 87, 0.4);
+  background: transparent;
+  color: #ff6b7a;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.8125rem;
+  min-height: 44px;
+}
+
+.error-banner button:active {
+  background: rgba(255, 71, 87, 0.15);
+}
+
+/* ── App grid ── */
+
+.app-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.app-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  width: 100%;
+  min-height: 44px;
+}
+
+.app-card:active {
+  background: var(--card-active);
+  border-color: rgba(102, 126, 234, 0.3);
+  transform: scale(0.98);
+}
+
+@media (hover: hover) {
+  .app-card:hover {
+    background: var(--card-hover);
+    border-color: rgba(102, 126, 234, 0.25);
+    transform: translateY(-2px);
+  }
+}
+
+.app-card-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+}
+
+.app-card-icon-oc {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+}
+
+.app-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-card-name {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.app-card-url {
+  font-size: 0.75rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Status dot */
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-up {
+  background: #2ed573;
+  box-shadow: 0 0 6px rgba(46, 213, 115, 0.5);
+}
+
+.status-down {
+  background: #57606a;
+}
+
+.status-unknown {
+  background: #57606a;
+}
+
+/* ── Empty ── */
+
+.empty-state {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--muted);
+}
+
+.empty-state code {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  color: var(--text);
+  max-width: 100%;
+  overflow-x: auto;
+  word-break: break-all;
+}
+
+/* ── App view ── */
+
+.app-view {
+  position: relative;
+  height: 100vh;
+  height: 100dvh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+.app-view-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: white;
+}
+
+/* ── Mobile ── */
+
+@media (max-width: 600px) {
+  .app-grid {
+    grid-template-columns: 1fr;
+  }
+}

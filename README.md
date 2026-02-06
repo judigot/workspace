@@ -41,7 +41,7 @@ Then it automatically:
 2. Issues TLS certificates (`certbot --standalone`)
 3. Generates and deploys the nginx config with SSL
 4. Creates and starts the `opencode.service` systemd unit
-5. Clones `judigot/dashboard`, installs deps, starts the dashboard services
+5. Installs dashboard deps and starts the dashboard services
 
 **Step 3 — Open the browser**
 
@@ -107,8 +107,8 @@ This is the core workflow. You're on your phone, looking at your app.
 │     the entire screen   │
 │                         │
 │                         │
-│  ←              🟣      │
-│  back           bubble  │
+│                  🟣      │
+│                  bubble  │
 └─────────────────────────┘
 ```
 
@@ -140,11 +140,13 @@ Go to `workspace.judigot.com`. The dashboard shows all registered apps with live
 - **Gray dot** = dev server is stopped
 - **OC card** = opens OpenCode in a new tab
 
-Tap any app card to view it full-screen. Two floating elements appear:
-- **Back button** (top-left, small circle) — returns to dashboard
-- **Chat bubble** (bottom-right, draggable) — opens OpenCode
+Tap any app card to view it full-screen. The **DevBubble** appears (bottom-right, draggable):
+- Tap to expand — opens a panel with workspace nav (Home + app tabs) above the OpenCode iframe
+- Tap Home in the nav — returns to dashboard
+- Tap an app tab — switches to that app
+- Tap minimize — collapse back to bubble (OpenCode session is preserved)
 
-The bubble is draggable like a Messenger chat head. Drag it out of the way, tap to expand, minimize to shrink back.
+The bubble is draggable like a Messenger chat head. It is the **only control surface** in app view — no top nav bar, no standalone back button.
 
 ---
 

@@ -593,3 +593,4 @@ This step is critical because `deploy-nginx.sh` only copies `dist/dev-bubble.js`
 5. **The DevBubble widget is injected by nginx** — `sub_filter` adds a `<script>` tag to every app page; the widget is a self-contained React bundle (React+ReactDOM included in the IIFE). Rebuild with `esbuild --jsx=automatic` and redeploy with `deploy-nginx.sh`.
 6. **Dashboard is inside the workspace repo** at `~/workspace/dashboard/` — it is NOT a separate repository
 7. **`APPS` in `.env` is the single source of truth** for what apps exist and how they're routed
+8. **Always use SSH for git operations** — use `git@github.com:` URLs, not `https://github.com/`. HTTPS will fail because no credential helper is configured. If a repo already uses an HTTPS remote, switch it: `git remote set-url origin git@github.com:<owner>/<repo>.git`

@@ -1,6 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import { DevBubble } from "@dashboard/dev-bubble";
-import type { IBubbleApp } from "@dashboard/dev-bubble";
 
 interface IApp {
   slug: string;
@@ -18,8 +16,6 @@ interface IConfig {
 function App() {
   const [config, setConfig] = useState<IConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activeApp, setActiveApp] = useState<IApp | null>(null);
-  const [appFrameUrl, setAppFrameUrl] = useState<string>("");
 
   const fetchApps = useCallback(async () => {
     try {
@@ -45,49 +41,6 @@ function App() {
     };
   }, [fetchApps]);
 
-  const opencodeUrl =
-    config !== null
-      ? `https://${config.opencodeDomain}/`
-      : "https://opencode.judigot.com/";
-
-  /* Build bubble app list from config */
-  const bubbleApps: IBubbleApp[] =
-    config?.apps.map((a) => ({
-      slug: a.slug,
-      url: a.url,
-      status: a.status,
-    })) ?? [];
-
-  /* App view — fullscreen iframe, no nav bar, only DevBubble */
-  if (activeApp !== null) {
-    return (
-      <div className="app-view">
-        <iframe
-          src={appFrameUrl}
-          className="app-view-frame"
-          title={activeApp.slug}
-          allow="clipboard-read; clipboard-write"
-        />
-        <DevBubble
-          url={opencodeUrl}
-          appUrl={appFrameUrl}
-          onNavigate={(newUrl) => setAppFrameUrl(newUrl)}
-          apps={bubbleApps}
-          activeSlug={activeApp.slug}
-          onSelectApp={(app) => {
-            const found = config?.apps.find((a) => a.slug === app.slug);
-            if (found) {
-              setActiveApp(found);
-              setAppFrameUrl(found.url);
-            }
-          }}
-          onGoHome={() => setActiveApp(null)}
-        />
-      </div>
-    );
-  }
-
-  /* Dashboard view — no bubble */
   return (
     <div className="dashboard">
       <div className="dashboard-content">
@@ -125,14 +78,13 @@ function App() {
             </button>
           )}
 
-          {/* App cards */}
+          {/* App cards — navigate to the app URL directly */}
           {config?.apps.map((appItem) => (
             <button
               key={appItem.slug}
               className="app-card"
               onClick={() => {
-                setActiveApp(appItem);
-                setAppFrameUrl(appItem.url);
+                window.location.href = appItem.url;
               }}
             >
               <div className="app-card-icon">

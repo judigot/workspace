@@ -215,25 +215,6 @@ body {
   word-break: break-all;
 }
 
-/* ── App view ── */
-
-.app-view {
-  position: relative;
-  height: 100vh;
-  height: 100dvh;
-  width: 100vw;
-  overflow: hidden;
-}
-
-.app-view-frame {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  border: 0;
-  background: white;
-}
-
 /* ── Mobile ── */
 
 @media (max-width: 600px) {

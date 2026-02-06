@@ -84,7 +84,8 @@ This is a **single EC2 instance** running Ubuntu. Everything runs on one box:
 │   ├── generate-nginx.sh         # Nginx config template generator
 │   └── health-check.sh           # Smoke test all endpoints
 ├── dist/
-│   └── nginx.conf                # Generated nginx config (do not edit)
+│   ├── nginx.conf                # Generated nginx config (do not edit)
+│   └── dev-bubble.js             # Built DevBubble widget bundle (esbuild output)
 ├── nginx/                        # Nginx template fragments
 ├── workspace-shell/              # Shell utilities
 └── dashboard/                    # Dashboard monorepo (pnpm workspaces)
@@ -93,7 +94,7 @@ This is a **single EC2 instance** running Ubuntu. Everything runs on one box:
     ├── apps/
     │   └── workspace/            # Dashboard React app + Hono API server
     │       ├── src/
-    │       │   ├── App.tsx       # Dashboard UI — app grid + app view + DevBubble
+    │       │   ├── App.tsx       # Dashboard UI — app grid (navigates to app URLs)
     │       │   ├── styles/
     │       │   │   └── main.scss # Dashboard styles
     │       │   └── server/
@@ -101,10 +102,11 @@ This is a **single EC2 instance** running Ubuntu. Everything runs on one box:
     │       │       └── index.ts  # Server entry point
     │       └── vite.config.ts    # Vite config (port 3200, proxies /api to 3100)
     └── packages/
-        ├── dev-bubble/           # DevBubble component (floating chat bubble)
+        ├── dev-bubble/           # DevBubble widget + React component
         │   └── src/
-        │       ├── DevBubble.tsx        # Bubble + panel with workspace nav + OpenCode iframe
-        │       ├── DevBubble.module.css # Bubble and panel styles
+        │       ├── widget.ts            # Standalone widget (vanilla JS, injected by nginx)
+        │       ├── DevBubble.tsx        # React component (legacy, kept for reference)
+        │       ├── DevBubble.module.css # React component styles
         │       └── index.ts             # Exports DevBubble + IBubbleApp
         ├── shared-utils/         # Shared utilities
         └── tsconfig/             # Shared TypeScript configs
@@ -116,14 +118,35 @@ This is a **single EC2 instance** running Ubuntu. Everything runs on one box:
 Browser → Nginx (:443 SSL)
   │
   ├─ judigot.com (+ workspace.judigot.com alias)
-  │   ├─ /                    → Dashboard Vite (:3200)  ← app grid + DevBubble
+  │   ├─ /                    → Dashboard Vite (:3200)  ← app grid
   │   ├─ /api/*               → Dashboard Hono API (:3100)
-  │   ├─ /<slug>/             → App Vite frontend (frontend/fullstack)
+  │   ├─ /dev-bubble.js       → Static widget bundle (/var/www/static/)
+  │   ├─ /<slug>/             → App Vite frontend + sub_filter injects DevBubble
   │   ├─ /<slug>/__vite_hmr   → Vite HMR websocket
   │   ├─ /<slug>/api/         → App backend API (fullstack only)
   │   └─ /<slug>/ws           → App websocket (fullstack + ws option)
   │
-  └─ opencode.judigot.com     → OpenCode (:4097, iframe-friendly, auth injected by nginx)
+  └─ opencode.judigot.com     → OpenCode (:4097, auth injected by nginx)
+```
+
+### DevBubble Widget Injection
+
+Nginx uses `sub_filter` to inject the DevBubble widget into every app page. For each app location block:
+- `proxy_set_header Accept-Encoding ""` — disables upstream compression so `sub_filter` can parse the response
+- `sub_filter '</body>' '<script src="/dev-bubble.js" ...></script></body>'` — injects the widget before closing body tag
+- `sub_filter_once on` — only inject once per response
+
+The widget bundle at `/dev-bubble.js` is a self-contained IIFE built with esbuild from `dashboard/packages/dev-bubble/src/widget.ts`. It creates a draggable floating bubble, and when tapped, opens a fullscreen panel with an OpenCode iframe, URL bar, and Home button. No React, no dependencies on the host app.
+
+**To rebuild the widget:**
+```sh
+cd ~/workspace/dashboard
+npx esbuild packages/dev-bubble/src/widget.ts --bundle --minify --format=iife --outfile=../dist/dev-bubble.js --target=es2020
+```
+
+**To deploy** (copies widget to `/var/www/static/` and reloads nginx):
+```sh
+~/workspace/scripts/deploy-nginx.sh
 ```
 
 ## Services and Ports
@@ -375,9 +398,11 @@ serve({
 
 The backend must serve routes under `/api/` — nginx strips the `/<slug>/api/` prefix and proxies to `/api/` on the backend.
 
-### Iframe embedding
+### Widget injection
 
-Apps loaded through the dashboard are displayed inside iframes. The nginx config for `opencode.judigot.com` removes `X-Frame-Options` and adds `Content-Security-Policy: frame-ancestors` to allow embedding from `judigot.com` (and alias `workspace.judigot.com`). If a new app refuses to load in the iframe, check its response headers — it may be sending `X-Frame-Options: DENY`.
+Apps are **not** loaded in iframes. Instead, the dashboard navigates the browser directly to the app URL, and nginx injects the DevBubble widget into the app's HTML response using `sub_filter`. This avoids all iframe-related issues (Auth0 `refused to connect`, cookie restrictions, CSP conflicts).
+
+The `opencode.judigot.com` server block still removes `X-Frame-Options` and injects basic auth — this is because the DevBubble widget itself embeds OpenCode in an iframe within the panel overlay.
 
 ## Dashboard Architecture
 
@@ -386,20 +411,25 @@ The dashboard is a **pnpm monorepo** inside `~/workspace/dashboard/`:
 ### Packages
 
 - **`apps/workspace`** — The main dashboard app
-  - `src/App.tsx` — React app with two views:
-    - **Dashboard view**: App grid cards with status dots. No DevBubble here.
-    - **App view**: Fullscreen iframe of the selected app. DevBubble visible.
+  - `src/App.tsx` — React app with a single dashboard view:
+    - App grid cards with status dots
+    - Clicking an app card navigates the browser to the app URL (e.g. `/scaffolder/`)
+    - OpenCode card opens in a new tab
   - `src/server/app.ts` — Hono API server
     - `GET /api/apps` — reads `~/workspace/.env`, parses `APPS`, TCP-checks each port, returns JSON
     - `GET /api/health` — returns `{ status: "ok" }`
   - `vite.config.ts` — port 3200, proxies `/api` to localhost:3100
 
-- **`packages/dev-bubble`** — The floating chat bubble component
-  - Always-mounted panel (iframe persists across open/close to preserve OpenCode session)
-  - Workspace nav strip inside the panel (Home + app tabs with status dots)
-  - Props: `url`, `apps`, `activeSlug`, `onSelectApp`, `onGoHome`
-  - Draggable bubble with touch support for mobile
-  - Only shown in app view, never on dashboard home
+- **`packages/dev-bubble`** — The DevBubble widget and React component
+  - `src/widget.ts` — **Standalone vanilla JS widget** (the primary artifact):
+    - Built with esbuild into `~/workspace/dist/dev-bubble.js`
+    - Injected into app pages by nginx `sub_filter`
+    - Draggable floating bubble (touch + mouse support)
+    - Fullscreen panel with OpenCode iframe, URL bar, Home button
+    - Configured via `<script>` data attributes: `data-opencode-url`, `data-dashboard-url`
+    - No React, no dependencies on host app
+  - `src/DevBubble.tsx` — Legacy React component (kept for reference, not actively used)
+  - `src/index.ts` — Exports for the React component
 
 - **`packages/shared-utils`** — Shared utilities
 - **`packages/tsconfig`** — Shared TypeScript configs
@@ -457,13 +487,15 @@ The catch-all `location /` proxies to the Dashboard. If a slug isn't in the gene
 2. Check the API directly: `curl http://localhost:3100/api/apps`
 3. Check if the API server is running: `ss -tlnp | grep :3100`
 
-### App iframe shows "refused to connect"
+### DevBubble widget not appearing on app page
 
-The app's response headers may include `X-Frame-Options: DENY` or a restrictive CSP.
+The widget is injected by nginx `sub_filter`. If it doesn't appear:
 
-1. Check headers: `curl -sI https://judigot.com/scaffolder/ | grep -i frame`
-2. The app's nginx location block should have `proxy_hide_header X-Frame-Options` and appropriate CSP
-3. Redeploy nginx if the headers are wrong: `~/workspace/scripts/deploy-nginx.sh`
+1. Check that the app returns HTML with `</body>`: `curl -s https://judigot.com/scaffolder/ | grep '</body>'`
+2. Check that `sub_filter` is in the nginx config: `grep sub_filter /etc/nginx/sites-available/default`
+3. Check the widget JS is served: `curl -sI https://judigot.com/dev-bubble.js` (should be 200)
+4. If widget JS returns 403, the file may not exist at `/var/www/static/dev-bubble.js` — redeploy: `~/workspace/scripts/deploy-nginx.sh`
+5. If the app uses gzip/brotli encoding upstream, `sub_filter` can't parse it. The nginx config sets `proxy_set_header Accept-Encoding ""` to disable upstream compression.
 
 ### Systemd services not starting
 
@@ -532,6 +564,6 @@ sudo journalctl -u nginx -n 20 --no-pager
 2. **Always kill stale port processes before restarting** — Vite will silently pick a different port
 3. **Use `strictPort: true`** in all Vite configs to fail loud instead of silently rebinding
 4. **The dashboard reads `.env` live** — no restart needed for app list changes
-5. **The DevBubble iframe is always mounted** — toggling the bubble shows/hides with CSS, does not unmount (preserves OpenCode session)
+5. **The DevBubble widget is injected by nginx** — `sub_filter` adds a `<script>` tag to every app page; the widget is standalone vanilla JS with no app dependencies. Rebuild with `esbuild` and redeploy with `deploy-nginx.sh`.
 6. **Dashboard is inside the workspace repo** at `~/workspace/dashboard/` — it is NOT a separate repository
 7. **`APPS` in `.env` is the single source of truth** for what apps exist and how they're routed

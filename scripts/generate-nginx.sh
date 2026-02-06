@@ -27,6 +27,7 @@ fi
 WORKSPACE_ROOT=${WORKSPACE_ROOT:-"/var/www/workspace"}
 DASHBOARD_PORT=${DASHBOARD_PORT:-3200}
 DASHBOARD_API_PORT=${DASHBOARD_API_PORT:-3100}
+WIDGET_DIR=${WIDGET_DIR:-"/var/www/static"}
 
 # Backward compatibility: if VITE_APPS is set but APPS is not, convert to new format
 if [ -z "${APPS:-}" ] && [ -n "${VITE_APPS:-}" ]; then
@@ -199,7 +200,18 @@ server {
     proxy_connect_timeout 60s;
     proxy_send_timeout 300s;
     proxy_read_timeout 300s;
+
+    # Serve the DevBubble widget JS as a static file
+    location = /dev-bubble.js {
+        alias ${WIDGET_DIR}/dev-bubble.js;
+        add_header Cache-Control "public, max-age=300";
+        add_header Content-Type "application/javascript";
+        add_header X-Content-Type-Options "nosniff" always;
+    }
 EOF
+
+# sub_filter snippet injected into each app's main location block
+WIDGET_SCRIPT_TAG="<script src=\"https://${DOMAIN}/dev-bubble.js\" data-opencode-url=\"https://${OPENCODE_SUBDOMAIN}\" data-dashboard-url=\"https://${DOMAIN}\"></script>"
 
 # Generate location blocks for each app
 for app in $APPS; do
@@ -238,9 +250,12 @@ for app in $APPS; do
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-XSS-Protection "1; mode=block" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-        add_header Content-Security-Policy "frame-ancestors https://${DOMAIN} https://${WORKSPACE_SUBDOMAIN}" always;
-        add_header X-Frame-Options "" always;
         proxy_buffering off;
+
+        # Inject DevBubble widget into HTML responses
+        proxy_set_header Accept-Encoding "";
+        sub_filter '</body>' '${WIDGET_SCRIPT_TAG}</body>';
+        sub_filter_once on;
     }
 EOF
       ;;
@@ -311,9 +326,12 @@ EOF
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_set_header X-Forwarded-Port \$server_port;
         proxy_set_header X-Forwarded-Host \$host;
-        add_header Content-Security-Policy "frame-ancestors https://${DOMAIN} https://${WORKSPACE_SUBDOMAIN}" always;
-        add_header X-Frame-Options "" always;
         proxy_buffering off;
+
+        # Inject DevBubble widget into HTML responses
+        proxy_set_header Accept-Encoding "";
+        sub_filter '</body>' '${WIDGET_SCRIPT_TAG}</body>';
+        sub_filter_once on;
     }
 EOF
       ;;
@@ -331,9 +349,12 @@ EOF
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_set_header X-Forwarded-Port \$server_port;
         proxy_set_header X-Forwarded-Host \$host;
-        add_header Content-Security-Policy "frame-ancestors https://${DOMAIN} https://${WORKSPACE_SUBDOMAIN}" always;
-        add_header X-Frame-Options "" always;
         proxy_buffering off;
+
+        # Inject DevBubble widget into HTML responses
+        proxy_set_header Accept-Encoding "";
+        sub_filter '</body>' '${WIDGET_SCRIPT_TAG}</body>';
+        sub_filter_once on;
     }
 EOF
       ;;

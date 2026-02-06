@@ -18,6 +18,15 @@ TARGET_PATH=${TARGET_PATH:-"/etc/nginx/sites-available/default"}
 
 "${SCRIPT_DIR}/generate-nginx.sh" "${OUTPUT_PATH}"
 
+# Copy DevBubble widget to static serving directory
+WIDGET_SRC="${ROOT_DIR}/dist/dev-bubble.js"
+WIDGET_DEST="${WIDGET_DIR:-/var/www/static}/dev-bubble.js"
+if [ -f "$WIDGET_SRC" ]; then
+  sudo mkdir -p "$(dirname "$WIDGET_DEST")"
+  sudo cp "$WIDGET_SRC" "$WIDGET_DEST"
+  sudo chown www-data:www-data "$WIDGET_DEST"
+fi
+
 sudo cp "${OUTPUT_PATH}" "${TARGET_PATH}"
 sudo nginx -t
 sudo systemctl reload nginx

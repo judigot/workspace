@@ -97,22 +97,24 @@ This is the core workflow. You're on your phone, looking at your app.
 └─────────────────────────┘
 ```
 
-**Step 1** — Tap the scaffolder card. Your app loads full-screen.
+**Step 1** — Tap the scaffolder card. The browser navigates to `judigot.com/scaffolder/` — a native page, not an iframe.
 
 ```
 ┌─────────────────────────┐
+│  judigot.com/scaffolder │
 │                         │
-│                         │
-│     Your app fills      │
-│     the entire screen   │
-│                         │
+│     Your app runs as    │
+│     a native page       │
+│     (no iframe)         │
 │                         │
 │                  🟣      │
 │                  bubble  │
 └─────────────────────────┘
 ```
 
-**Step 2** — You see something you want to change. Tap the chat bubble (bottom-right). OpenCode opens fullscreen.
+The DevBubble widget is automatically injected into the page by nginx (`sub_filter`). No app code changes required.
+
+**Step 2** — You see something you want to change. Tap the chat bubble (bottom-right). OpenCode opens fullscreen over the app.
 
 **Step 3** — Tell it what you want:
 
@@ -140,13 +142,17 @@ Go to `judigot.com`. The dashboard shows all registered apps with live status:
 - **Gray dot** = dev server is stopped
 - **OC card** = opens OpenCode in a new tab
 
-Tap any app card to view it full-screen. The **DevBubble** appears (bottom-right, draggable):
-- Tap to expand — opens a panel with workspace nav (Home + app tabs) above the OpenCode iframe
-- Tap Home in the nav — returns to dashboard
-- Tap an app tab — switches to that app
-- Tap minimize — collapse back to bubble (OpenCode session is preserved)
+Tap any app card — the browser navigates directly to the app URL (e.g. `judigot.com/scaffolder/`). The app runs as a native page with full Auth0/cookie support (no iframe restrictions).
 
-The bubble is draggable like a Messenger chat head. It is the **only control surface** in app view — no top nav bar, no standalone back button.
+The **DevBubble** widget appears on every app page (bottom-right, draggable):
+- Tap to expand — opens a fullscreen panel with OpenCode + URL bar + Home button
+- Tap Home — navigates back to the dashboard
+- Enter a URL in the URL bar — navigates the browser to that address
+- Tap minimize — collapse back to bubble
+
+The bubble is draggable like a Messenger chat head. It is the **only control surface** on app pages — no top nav bar, no standalone back button.
+
+**How it works:** Nginx uses `sub_filter` to inject a `<script>` tag into every app's HTML response before `</body>`. The script loads a self-contained widget bundle (`/dev-bubble.js`) that creates the bubble and panel entirely in vanilla JS — no React, no build dependency on the host app.
 
 ---
 
@@ -185,29 +191,41 @@ judigot.com (+ workspace.judigot.com alias)
         ▼
    Nginx (:443, SSL)
         │
-        ├─ /              → Dashboard Vite (:3200)  ← app grid + DevBubble
+        ├─ /              → Dashboard Vite (:3200)  ← app grid
         ├─ /api/*         → Dashboard Hono API (:3100)
         │                   reads .env, checks port health
-        ├─ /<slug>/       → App Vite frontend (frontend/fullstack)
+        ├─ /dev-bubble.js → Static widget bundle (/var/www/static/)
+        ├─ /<slug>/       → App Vite frontend + sub_filter injects DevBubble widget
         ├─ /<slug>/api/   → App backend API (fullstack only)
         ├─ /<slug>/ws     → App websocket (fullstack+ws)
-        └─ /<slug>/       → App backend (laravel)
+        └─ /<slug>/       → App backend + sub_filter (laravel)
 
-opencode.judigot.com → OpenCode (:4097, iframe-friendly, auth injected by nginx)
+opencode.judigot.com → OpenCode (:4097, auth injected by nginx)
 ```
 
-**The DevBubble loop:**
+**DevBubble injection (nginx `sub_filter`):**
+
+For every app location, nginx rewrites the HTML response:
+```
+sub_filter '</body>' '<script src="/dev-bubble.js" data-opencode-url="..." data-dashboard-url="..."></script></body>';
+```
+The widget is self-contained vanilla JS — no React, no dependencies on the host app.
+
+**The vibe-coding loop:**
 
 ```
-Phone → judigot.com → tap app → full-screen iframe
-                                              │
-                                    tap bubble → OpenCode (fullscreen)
-                                              │
-                                    "change X" → AI edits code
-                                              │
-                                    Vite HMR → change visible instantly
-                                              │
-                                    minimize → back to app
+Phone → judigot.com → tap app card → browser navigates to /scaffolder/
+                                                │
+                                      app loads as native page
+                                      DevBubble widget injected by nginx
+                                                │
+                                      tap bubble → OpenCode panel (fullscreen)
+                                                │
+                                      "change X" → AI edits code
+                                                │
+                                      Vite HMR → change visible instantly
+                                                │
+                                      minimize → back to app
 ```
 
 ## App Types
@@ -231,8 +249,8 @@ Phone → judigot.com → tap app → full-screen iframe
 |--------|---------|
 | `scripts/init.sh` | Full setup wizard — run once after clone |
 | `scripts/add-app.sh` | Register a new app (frontend/fullstack/laravel) and redeploy nginx |
-| `scripts/deploy-nginx.sh` | Regenerate + deploy nginx config from `.env` |
-| `scripts/generate-nginx.sh` | Generate nginx.conf from env vars |
+| `scripts/deploy-nginx.sh` | Regenerate + deploy nginx config + copy widget bundle to `/var/www/static/` |
+| `scripts/generate-nginx.sh` | Generate nginx.conf from env vars (includes `sub_filter` injection) |
 | `scripts/health-check.sh` | Smoke test all endpoints |
 
 ## Configuration

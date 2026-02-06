@@ -96,7 +96,7 @@ for app in $APPS; do
   upstream_name=$(slug_to_upstream_name "$APP_SLUG")
 
   case "$APP_TYPE" in
-    frontend)
+    frontend|nextjs|nuxt|static)
       cat >> "$OUTPUT" <<EOF
 
 upstream app_${upstream_name}_frontend {
@@ -119,7 +119,7 @@ upstream app_${upstream_name}_backend {
 }
 EOF
       ;;
-    laravel)
+    laravel|backend)
       cat >> "$OUTPUT" <<EOF
 
 upstream app_${upstream_name}_backend {
@@ -329,11 +329,111 @@ EOF
     }
 EOF
       ;;
-    laravel)
+    nextjs)
+      # Next.js HMR websocket (/_next/webpack-hmr)
+      cat >> "$OUTPUT" <<EOF
+
+    location /${APP_SLUG}/_next/webpack-hmr {
+        proxy_pass http://app_${upstream_name}_frontend/${APP_SLUG}/_next/webpack-hmr;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \$connection_upgrade;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+        proxy_buffering off;
+    }
+
+    location /${APP_SLUG}/ {
+        proxy_pass http://app_${upstream_name}_frontend/${APP_SLUG}/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \$connection_upgrade;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Port \$server_port;
+        proxy_set_header X-Forwarded-Host \$host;
+        proxy_buffering off;
+
+        # Inject DevBubble widget into HTML responses
+        proxy_set_header Accept-Encoding "";
+        sub_filter '</body>' '${WIDGET_SCRIPT_TAG}</body>';
+        sub_filter_once on;
+    }
+EOF
+      ;;
+    nuxt)
+      # Nuxt HMR uses Vite under the hood in Nuxt 3+ (/_nuxt/ path for assets, /__vite_hmr or /_nuxt/ for HMR)
+      cat >> "$OUTPUT" <<EOF
+
+    location /${APP_SLUG}/_nuxt/ {
+        proxy_pass http://app_${upstream_name}_frontend/${APP_SLUG}/_nuxt/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \$connection_upgrade;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+        proxy_buffering off;
+    }
+
+    location /${APP_SLUG}/ {
+        proxy_pass http://app_${upstream_name}_frontend/${APP_SLUG}/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \$connection_upgrade;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Port \$server_port;
+        proxy_set_header X-Forwarded-Host \$host;
+        proxy_buffering off;
+
+        # Inject DevBubble widget into HTML responses
+        proxy_set_header Accept-Encoding "";
+        sub_filter '</body>' '${WIDGET_SCRIPT_TAG}</body>';
+        sub_filter_once on;
+    }
+EOF
+      ;;
+    laravel|backend)
       cat >> "$OUTPUT" <<EOF
 
     location /${APP_SLUG}/ {
         proxy_pass http://app_${upstream_name}_backend/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \$connection_upgrade;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Port \$server_port;
+        proxy_set_header X-Forwarded-Host \$host;
+        proxy_buffering off;
+
+        # Inject DevBubble widget into HTML responses
+        proxy_set_header Accept-Encoding "";
+        sub_filter '</body>' '${WIDGET_SCRIPT_TAG}</body>';
+        sub_filter_once on;
+    }
+EOF
+      ;;
+    static)
+      # Generic dev server — no special HMR handling, just proxy everything
+      cat >> "$OUTPUT" <<EOF
+
+    location /${APP_SLUG}/ {
+        proxy_pass http://app_${upstream_name}_frontend/${APP_SLUG}/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection \$connection_upgrade;

@@ -14,14 +14,22 @@ Usage:
 Types:
   frontend   — Vite frontend only (slug + frontend_port)
   fullstack  — Vite frontend + backend (slug + frontend_port + backend_port)
-               Options: ws (enable websocket proxying)
+                Options: ws (enable websocket proxying)
+  nextjs     — Next.js app (slug + port). HMR via /_next/webpack-hmr
+  nuxt       — Nuxt app (slug + port). HMR via /_nuxt/
   laravel    — Laravel backend only (slug + backend_port)
+  backend    — Any backend server (Spring Boot, Django, Express, etc.)
+  static     — Any dev server with no special HMR needs
 
 Examples:
   add-app.sh my-app 5177
   add-app.sh my-app frontend 5177
   add-app.sh scaffolder fullstack 3000 5000 ws
   add-app.sh admin laravel 8000
+  add-app.sh blog nextjs 3001
+  add-app.sh docs nuxt 3002
+  add-app.sh api backend 8080
+  add-app.sh landing static 4000
 
 App entry format in .env APPS variable:
   slug:type:frontend_port[:backend_port[:options]]
@@ -70,13 +78,17 @@ parse_args() {
       BACKEND_PORT="$4"
       [ $# -ge 5 ] && OPTIONS="$5"
       ;;
-    laravel)
-      [ $# -ge 3 ] || { echo "laravel requires: slug backend_port" >&2; usage; }
+    nextjs|nuxt|static)
+      [ $# -ge 3 ] || { echo "${TYPE} requires: slug port" >&2; usage; }
+      FRONTEND_PORT="$3"
+      ;;
+    laravel|backend)
+      [ $# -ge 3 ] || { echo "${TYPE} requires: slug port" >&2; usage; }
       BACKEND_PORT="$3"
       ;;
     *)
       echo "Unknown type: ${TYPE}" >&2
-      echo "Valid types: frontend, fullstack, laravel" >&2
+      echo "Valid types: frontend, fullstack, nextjs, nuxt, laravel, backend, static" >&2
       exit 1
       ;;
   esac
@@ -147,9 +159,9 @@ entry_ports() {
   set -- $entry
   local t="${2:-}"
   case "$t" in
-    frontend) echo "${3:-}" ;;
+    frontend|nextjs|nuxt|static) echo "${3:-}" ;;
     fullstack) echo "${3:-}"; echo "${4:-}" ;;
-    laravel) echo "${3:-}" ;;
+    laravel|backend) echo "${3:-}" ;;
     # Legacy format (slug:port) — treat port as position 2
     *) [ -n "${2:-}" ] && echo "${2:-}" ;;
   esac
@@ -190,8 +202,11 @@ build_entry() {
       APP_ENTRY="${SLUG}:fullstack:${FRONTEND_PORT}:${BACKEND_PORT}"
       [ -n "$OPTIONS" ] && APP_ENTRY="${APP_ENTRY}:${OPTIONS}"
       ;;
-    laravel)
-      APP_ENTRY="${SLUG}:laravel:${BACKEND_PORT}"
+    nextjs|nuxt|static)
+      APP_ENTRY="${SLUG}:${TYPE}:${FRONTEND_PORT}"
+      ;;
+    laravel|backend)
+      APP_ENTRY="${SLUG}:${TYPE}:${BACKEND_PORT}"
       ;;
   esac
 }
@@ -220,9 +235,8 @@ update_env() {
     local s="$1"
     local t="${2:-frontend}"
     case "$t" in
-      frontend)  vite_list="${vite_list:+${vite_list} }${s}:${3}" ;;
-      fullstack) vite_list="${vite_list:+${vite_list} }${s}:${3}" ;;
-      laravel)   vite_list="${vite_list:+${vite_list} }${s}:${3}" ;;
+      frontend|fullstack|nextjs|nuxt|static) vite_list="${vite_list:+${vite_list} }${s}:${3}" ;;
+      laravel|backend) vite_list="${vite_list:+${vite_list} }${s}:${3}" ;;
     esac
     IFS=' '
   done
@@ -282,12 +296,53 @@ EOF
         echo "     WS:    wss://${domain}/${SLUG}/ws"
       fi
       ;;
+    nextjs)
+      cat <<EOF
+  1. Create or clone the app at ~/${SLUG}
+  2. Configure next.config.js (or .mjs/.ts):
+       basePath: '/${SLUG}'
+       assetPrefix: '/${SLUG}'
+  3. Start the dev server:
+       cd ~/${SLUG} && npx next dev --hostname 0.0.0.0 --port ${FRONTEND_PORT}
+  4. Visit: https://${domain}/${SLUG}/
+EOF
+      ;;
+    nuxt)
+      cat <<EOF
+  1. Create or clone the app at ~/${SLUG}
+  2. Configure nuxt.config.ts:
+       app: { baseURL: '/${SLUG}/' }
+  3. Start the dev server:
+       cd ~/${SLUG} && npx nuxt dev --host 0.0.0.0 --port ${FRONTEND_PORT}
+  4. Visit: https://${domain}/${SLUG}/
+EOF
+      ;;
     laravel)
       cat <<EOF
   1. Create or clone the app at ~/${SLUG}
   2. Start the server (pick one):
        php artisan serve --host=0.0.0.0 --port=${BACKEND_PORT}
        php artisan octane:start --host=0.0.0.0 --port=${BACKEND_PORT}
+  3. Visit: https://${domain}/${SLUG}/
+EOF
+      ;;
+    backend)
+      cat <<EOF
+  1. Create or clone the app at ~/${SLUG}
+  2. Start the server on port ${BACKEND_PORT} (bind to 0.0.0.0):
+       Examples:
+         Node/Bun:     cd ~/${SLUG} && bun run dev --port ${BACKEND_PORT}
+         Spring Boot:  cd ~/${SLUG} && ./mvnw spring-boot:run -Dspring-boot.run.arguments=--server.port=${BACKEND_PORT}
+         Django:       cd ~/${SLUG} && python manage.py runserver 0.0.0.0:${BACKEND_PORT}
+         Flask:        cd ~/${SLUG} && flask run --host=0.0.0.0 --port=${BACKEND_PORT}
+         Go:           cd ~/${SLUG} && go run . (listening on :${BACKEND_PORT})
+  3. Visit: https://${domain}/${SLUG}/
+EOF
+      ;;
+    static)
+      cat <<EOF
+  1. Create or clone the app at ~/${SLUG}
+  2. Start the dev server on port ${FRONTEND_PORT} (bind to 0.0.0.0)
   3. Visit: https://${domain}/${SLUG}/
 EOF
       ;;

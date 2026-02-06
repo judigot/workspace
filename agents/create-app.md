@@ -313,24 +313,50 @@ The Dashboard API (`~/workspace/dashboard/apps/workspace/src/server/app.ts`) rea
 |------|--------|---------|--------------|
 | `frontend` | `slug:frontend:port` | `my-app:frontend:5177` | `/<slug>/`, `/<slug>/__vite_hmr` |
 | `fullstack` | `slug:fullstack:fe_port:be_port[:ws]` | `scaffolder:fullstack:3000:5000:ws` | `/<slug>/`, `/<slug>/__vite_hmr`, `/<slug>/api/`, `/<slug>/ws` (if ws) |
+| `nextjs` | `slug:nextjs:port` | `blog:nextjs:3001` | `/<slug>/`, `/<slug>/_next/webpack-hmr` |
+| `nuxt` | `slug:nuxt:port` | `docs:nuxt:3002` | `/<slug>/`, `/<slug>/_nuxt/` |
 | `laravel` | `slug:laravel:port` | `admin:laravel:8000` | `/<slug>/` (proxied to PHP backend) |
+| `backend` | `slug:backend:port` | `api:backend:8080` | `/<slug>/` (proxied to any backend server) |
+| `static` | `slug:static:port` | `landing:static:4000` | `/<slug>/` (proxied, no special HMR) |
+
+**Choosing a type:**
+- **Vite-based** (React, Vue, Svelte, SolidJS, etc.) → `frontend` or `fullstack`
+- **Next.js** → `nextjs`
+- **Nuxt** → `nuxt`
+- **Laravel** → `laravel`
+- **Backend-only** (Spring Boot, Django, Flask, Express, Go, Rails, etc.) → `backend`
+- **Anything else** (SvelteKit, Astro, Remix, or any HTTP dev server) → `static`
 
 ### Register a new app
 
 ```sh
-# Frontend (Vite only)
+# Vite frontend
 ~/workspace/scripts/add-app.sh my-app 5177
 
-# Fullstack (Vite + backend + websockets)
+# Vite fullstack (frontend + backend + websockets)
 ~/workspace/scripts/add-app.sh my-api fullstack 3000 5000 ws
+
+# Next.js
+~/workspace/scripts/add-app.sh blog nextjs 3001
+
+# Nuxt
+~/workspace/scripts/add-app.sh docs nuxt 3002
 
 # Laravel
 ~/workspace/scripts/add-app.sh admin laravel 8000
+
+# Backend (Spring Boot, Django, Express, Go, etc.)
+~/workspace/scripts/add-app.sh api backend 8080
+
+# Static / generic dev server
+~/workspace/scripts/add-app.sh landing static 4000
 ```
 
 This updates `.env` `APPS`, regenerates nginx, and reloads — all in one step.
 
-### Scaffold a frontend app
+---
+
+### Scaffold a Vite frontend app (React, Vue, Svelte, etc.)
 
 ```sh
 cd ~
@@ -378,7 +404,7 @@ cd ~/my-app
 VITE_BASE_PATH=/my-app VITE_FRONTEND_PORT=5177 bun run dev --host 0.0.0.0 --port 5177
 ```
 
-### Scaffold a fullstack app
+### Scaffold a Vite fullstack app
 
 Same as frontend, plus a backend entry point:
 
@@ -401,6 +427,200 @@ serve({
 ```
 
 The backend must serve routes under `/api/` — nginx strips the `/<slug>/api/` prefix and proxies to `/api/` on the backend.
+
+### Scaffold a Next.js app
+
+```sh
+cd ~
+npx create-next-app@latest blog --typescript --eslint --app --src-dir --no-tailwind --import-alias "@/*"
+cd ~/blog && npm install
+```
+
+Configure `next.config.ts` (or `.mjs`):
+
+```ts
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  basePath: "/blog",
+  assetPrefix: "/blog",
+};
+
+export default nextConfig;
+```
+
+Key rules:
+- `basePath` must match the slug exactly: `/<slug>` (no trailing slash)
+- `assetPrefix` must match `basePath`
+- Next.js HMR uses `/_next/webpack-hmr` — nginx proxies this automatically for `nextjs` type
+- Bind to `0.0.0.0` so nginx can reach the dev server
+
+Register and start:
+
+```sh
+~/workspace/scripts/add-app.sh blog nextjs 3001
+cd ~/blog
+npx next dev --hostname 0.0.0.0 --port 3001
+```
+
+### Scaffold a Nuxt app
+
+```sh
+cd ~
+npx nuxi@latest init docs
+cd ~/docs && npm install
+```
+
+Configure `nuxt.config.ts`:
+
+```ts
+export default defineNuxtConfig({
+  app: {
+    baseURL: "/docs/",
+  },
+  devServer: {
+    host: "0.0.0.0",
+    port: 3002,
+  },
+  vite: {
+    server: {
+      hmr: {
+        protocol: "wss",
+        clientPort: 443,
+      },
+    },
+  },
+});
+```
+
+Key rules:
+- `app.baseURL` must have trailing slash: `/<slug>/`
+- Nuxt 3 uses Vite internally, so HMR config is under `vite.server.hmr`
+- Set `protocol: "wss"` and `clientPort: 443` since nginx terminates SSL
+
+Register and start:
+
+```sh
+~/workspace/scripts/add-app.sh docs nuxt 3002
+cd ~/docs
+npx nuxt dev --host 0.0.0.0 --port 3002
+```
+
+### Scaffold a Laravel app
+
+Requires PHP and Composer installed on the system.
+
+```sh
+cd ~
+composer create-project laravel/laravel admin
+cd ~/admin
+```
+
+Configure the app URL in `.env`:
+
+```
+APP_URL=https://judigot.com/admin
+```
+
+If using Laravel's route prefix, update `RouteServiceProvider` or route files to handle the `/admin` prefix.
+
+Register and start:
+
+```sh
+~/workspace/scripts/add-app.sh admin laravel 8000
+cd ~/admin
+php artisan serve --host=0.0.0.0 --port=8000
+# Or with Octane:
+php artisan octane:start --host=0.0.0.0 --port=8000
+```
+
+### Scaffold a backend app (Spring Boot, Django, Express, Flask, Go, Rails, etc.)
+
+The `backend` type is a generic HTTP reverse proxy — it works with any server that listens on a port.
+
+**Express/Fastify/Hono (Node.js):**
+```sh
+cd ~
+mkdir api && cd api && npm init -y
+npm install express
+```
+
+```js
+// index.js
+const express = require("express");
+const app = express();
+const PORT = process.env.PORT || 8080;
+
+app.get("/", (req, res) => res.json({ status: "ok" }));
+app.listen(PORT, "0.0.0.0", () => console.log(`Listening on ${PORT}`));
+```
+
+**Django:**
+```sh
+cd ~
+django-admin startproject api
+cd ~/api
+python manage.py runserver 0.0.0.0:8080
+```
+
+**Spring Boot:**
+```sh
+cd ~
+# Use Spring Initializr or existing project
+cd ~/api
+./mvnw spring-boot:run -Dspring-boot.run.arguments=--server.port=8080
+```
+
+**Go:**
+```sh
+cd ~
+mkdir api && cd api && go mod init api
+```
+
+```go
+// main.go
+package main
+
+import (
+    "net/http"
+    "fmt"
+)
+
+func main() {
+    http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+        fmt.Fprintf(w, `{"status":"ok"}`)
+    })
+    http.ListenAndServe(":8080", nil)
+}
+```
+
+Key rules for `backend` type:
+- Nginx strips the `/<slug>/` prefix — your server receives requests at `/`
+- Always bind to `0.0.0.0`, not `127.0.0.1` or `localhost`
+- DevBubble widget is injected if the server returns HTML with `</body>`
+
+Register and start:
+
+```sh
+~/workspace/scripts/add-app.sh api backend 8080
+cd ~/api && <start command for your framework>
+```
+
+### Scaffold any other framework (static type)
+
+The `static` type is a catch-all for any dev server. Use it for SvelteKit, Astro, Remix, Solid Start, or anything not listed above.
+
+Key rules:
+- Configure the framework's base path to match `/<slug>/`
+- Bind to `0.0.0.0`
+- No special HMR proxy is configured — if the framework uses websockets for HMR, it may need to fall back to polling or connect directly
+
+Register and start:
+
+```sh
+~/workspace/scripts/add-app.sh landing static 4000
+cd ~/landing && <start command>
+```
 
 ### Widget injection
 
@@ -594,3 +814,4 @@ This step is critical because `deploy-nginx.sh` only copies `dist/dev-bubble.js`
 6. **Dashboard is inside the workspace repo** at `~/workspace/dashboard/` — it is NOT a separate repository
 7. **`APPS` in `.env` is the single source of truth** for what apps exist and how they're routed
 8. **Always use SSH for git operations** — use `git@github.com:` URLs, not `https://github.com/`. HTTPS will fail because no credential helper is configured. If a repo already uses an HTTPS remote, switch it: `git remote set-url origin git@github.com:<owner>/<repo>.git`
+9. **Support any web framework dynamically** — this workspace is not limited to Vite. Use the appropriate app type (`frontend`, `fullstack`, `nextjs`, `nuxt`, `laravel`, `backend`, `static`) based on the user's tech stack. If a framework isn't explicitly listed, use `backend` for server-rendered apps or `static` for any other dev server. Always configure the framework's base path to match the slug and bind to `0.0.0.0`.

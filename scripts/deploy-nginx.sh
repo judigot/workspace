@@ -3,6 +3,15 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ROOT_DIR=$(cd "${SCRIPT_DIR}/.." && pwd)
+ENV_FILE="${ROOT_DIR}/.env"
+
+# Source .env so generate-nginx.sh picks up APPS, DOMAIN, etc.
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+fi
 
 OUTPUT_PATH=${OUTPUT_PATH:-"${ROOT_DIR}/dist/nginx.conf"}
 TARGET_PATH=${TARGET_PATH:-"/etc/nginx/sites-available/default"}

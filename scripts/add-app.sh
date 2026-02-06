@@ -6,88 +6,292 @@ ROOT_DIR=$(cd "${SCRIPT_DIR}/.." && pwd)
 ENV_FILE="${ROOT_DIR}/.env"
 
 usage() {
-  echo "Usage: $0 <slug> <port>"
-  echo ""
-  echo "Add a Vite app to the workspace and redeploy nginx."
-  echo ""
-  echo "Examples:"
-  echo "  $0 my-app 5177"
-  echo "  $0 dashboard 5178"
+  cat <<'EOF'
+Usage:
+  add-app.sh <slug> <type> <frontend_port> [backend_port] [options]
+  add-app.sh <slug> <port>                    (shorthand for frontend)
+
+Types:
+  frontend   — Vite frontend only (slug + frontend_port)
+  fullstack  — Vite frontend + backend (slug + frontend_port + backend_port)
+               Options: ws (enable websocket proxying)
+  laravel    — Laravel backend only (slug + backend_port)
+
+Examples:
+  add-app.sh my-app 5177
+  add-app.sh my-app frontend 5177
+  add-app.sh scaffolder fullstack 3000 5000 ws
+  add-app.sh admin laravel 8000
+
+App entry format in .env APPS variable:
+  slug:type:frontend_port[:backend_port[:options]]
+EOF
   exit 1
 }
 
-[ $# -ge 2 ] || usage
+main() {
+  parse_args "$@"
+  validate_inputs
+  load_env
+  migrate_legacy_apps
+  check_conflicts
+  build_entry
+  update_env
+  redeploy_nginx
+  print_next_steps
+}
 
-SLUG="$1"
-PORT="$2"
+parse_args() {
+  [ $# -ge 2 ] || usage
 
-# Validate
-if ! echo "$PORT" | grep -qE '^[0-9]+$'; then
-  echo "✗ Port must be a number: $PORT" >&2
-  exit 1
-fi
+  SLUG="$1"
+  TYPE=""
+  FRONTEND_PORT=""
+  BACKEND_PORT=""
+  OPTIONS=""
 
-if ! echo "$SLUG" | grep -qE '^[a-z0-9][a-z0-9-]*$'; then
-  echo "✗ Slug must be lowercase alphanumeric with hyphens: $SLUG" >&2
-  exit 1
-fi
+  # Shorthand: add-app.sh <slug> <port>
+  if [ $# -eq 2 ] && echo "$2" | grep -qE '^[0-9]+$'; then
+    TYPE="frontend"
+    FRONTEND_PORT="$2"
+    return
+  fi
 
-if [ ! -f "$ENV_FILE" ]; then
-  echo "✗ No .env found — run init.sh first" >&2
-  exit 1
-fi
+  TYPE="$2"
 
-# Load current env
-set -a
-# shellcheck disable=SC1090
-. "$ENV_FILE"
-set +a
+  case "$TYPE" in
+    frontend)
+      [ $# -ge 3 ] || { echo "frontend requires: slug frontend_port" >&2; usage; }
+      FRONTEND_PORT="$3"
+      ;;
+    fullstack)
+      [ $# -ge 4 ] || { echo "fullstack requires: slug frontend_port backend_port" >&2; usage; }
+      FRONTEND_PORT="$3"
+      BACKEND_PORT="$4"
+      [ $# -ge 5 ] && OPTIONS="$5"
+      ;;
+    laravel)
+      [ $# -ge 3 ] || { echo "laravel requires: slug backend_port" >&2; usage; }
+      BACKEND_PORT="$3"
+      ;;
+    *)
+      echo "Unknown type: ${TYPE}" >&2
+      echo "Valid types: frontend, fullstack, laravel" >&2
+      exit 1
+      ;;
+  esac
+}
 
-VITE_APPS=${VITE_APPS:-""}
-
-# Check for duplicate slug or port
-for app in $VITE_APPS; do
-  existing_slug=${app%%:*}
-  existing_port=${app##*:}
-  if [ "$existing_slug" = "$SLUG" ]; then
-    echo "✗ Slug '${SLUG}' already exists (port ${existing_port})" >&2
+validate_inputs() {
+  if ! echo "$SLUG" | grep -qE '^[a-z0-9][a-z0-9-]*$'; then
+    echo "Slug must be lowercase alphanumeric with hyphens: ${SLUG}" >&2
     exit 1
   fi
-  if [ "$existing_port" = "$PORT" ]; then
-    echo "✗ Port ${PORT} already used by '${existing_slug}'" >&2
+
+  if [ -n "$FRONTEND_PORT" ] && ! echo "$FRONTEND_PORT" | grep -qE '^[0-9]+$'; then
+    echo "Frontend port must be a number: ${FRONTEND_PORT}" >&2
     exit 1
   fi
-done
 
-# Append to VITE_APPS
-if [ -n "$VITE_APPS" ]; then
-  NEW_VITE_APPS="${VITE_APPS} ${SLUG}:${PORT}"
-else
-  NEW_VITE_APPS="${SLUG}:${PORT}"
-fi
+  if [ -n "$BACKEND_PORT" ] && ! echo "$BACKEND_PORT" | grep -qE '^[0-9]+$'; then
+    echo "Backend port must be a number: ${BACKEND_PORT}" >&2
+    exit 1
+  fi
 
-# Update .env
-if grep -q '^VITE_APPS=' "$ENV_FILE"; then
-  sed -i "s|^VITE_APPS=.*|VITE_APPS=\"${NEW_VITE_APPS}\"|" "$ENV_FILE"
-else
-  echo "VITE_APPS=\"${NEW_VITE_APPS}\"" >> "$ENV_FILE"
-fi
+  if [ -n "$OPTIONS" ] && [ "$OPTIONS" != "ws" ]; then
+    echo "Unknown option: ${OPTIONS} (valid: ws)" >&2
+    exit 1
+  fi
 
-echo "✓ Added ${SLUG}:${PORT} to VITE_APPS"
+  if [ ! -f "$ENV_FILE" ]; then
+    echo "No .env found — run init.sh first" >&2
+    exit 1
+  fi
+}
 
-# Redeploy nginx
-export VITE_APPS="$NEW_VITE_APPS"
-"${SCRIPT_DIR}/deploy-nginx.sh"
-echo "✓ Nginx redeployed with new app"
-echo "✓ Dashboard will pick up the new app automatically (reads .env live)"
+load_env() {
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
 
-echo ""
-echo "Next steps:"
-echo "  1. Create or clone the app at ~/$(echo "$SLUG" | tr '-' '-')"
-echo "  2. Configure vite.config.ts:"
-echo "       base: '/${SLUG}/'"
-echo "       server.hmr.path: '/${SLUG}/__vite_hmr'"
-echo "       server.port: ${PORT}"
-echo "  3. Start the dev server:"
-echo "       cd ~/${SLUG} && bun run dev --host 0.0.0.0 --port ${PORT}"
-echo "  4. Visit: https://\${DOMAIN:-judigot.com}/${SLUG}/"
+  APPS=${APPS:-""}
+  VITE_APPS=${VITE_APPS:-""}
+}
+
+# Migrate legacy VITE_APPS (slug:port) to APPS (slug:frontend:port) format
+migrate_legacy_apps() {
+  if [ -n "$VITE_APPS" ] && [ -z "$APPS" ]; then
+    local migrated=""
+    for entry in $VITE_APPS; do
+      local s=${entry%%:*}
+      local p=${entry##*:}
+      if [ -n "$migrated" ]; then
+        migrated="${migrated} ${s}:frontend:${p}"
+      else
+        migrated="${s}:frontend:${p}"
+      fi
+    done
+    APPS="$migrated"
+    echo "Migrated VITE_APPS to APPS format: ${APPS}"
+  fi
+}
+
+# Extract all ports from an app entry
+entry_ports() {
+  local entry="$1"
+  # Format: slug:type:frontend_port[:backend_port[:options]]
+  # or frontend shorthand: slug:frontend:port
+  local IFS=':'
+  # shellcheck disable=SC2086
+  set -- $entry
+  local t="${2:-}"
+  case "$t" in
+    frontend) echo "${3:-}" ;;
+    fullstack) echo "${3:-}"; echo "${4:-}" ;;
+    laravel) echo "${3:-}" ;;
+    # Legacy format (slug:port) — treat port as position 2
+    *) [ -n "${2:-}" ] && echo "${2:-}" ;;
+  esac
+}
+
+check_conflicts() {
+  # Collect all ports for the new app
+  local new_ports=""
+  [ -n "$FRONTEND_PORT" ] && new_ports="$FRONTEND_PORT"
+  [ -n "$BACKEND_PORT" ] && new_ports="${new_ports:+${new_ports} }${BACKEND_PORT}"
+
+  for app in $APPS; do
+    local existing_slug=${app%%:*}
+
+    if [ "$existing_slug" = "$SLUG" ]; then
+      echo "Slug '${SLUG}' already exists: ${app}" >&2
+      exit 1
+    fi
+
+    for ep in $(entry_ports "$app"); do
+      [ -z "$ep" ] && continue
+      for np in $new_ports; do
+        if [ "$ep" = "$np" ]; then
+          echo "Port ${np} already used by '${existing_slug}'" >&2
+          exit 1
+        fi
+      done
+    done
+  done
+}
+
+build_entry() {
+  case "$TYPE" in
+    frontend)
+      APP_ENTRY="${SLUG}:frontend:${FRONTEND_PORT}"
+      ;;
+    fullstack)
+      APP_ENTRY="${SLUG}:fullstack:${FRONTEND_PORT}:${BACKEND_PORT}"
+      [ -n "$OPTIONS" ] && APP_ENTRY="${APP_ENTRY}:${OPTIONS}"
+      ;;
+    laravel)
+      APP_ENTRY="${SLUG}:laravel:${BACKEND_PORT}"
+      ;;
+  esac
+}
+
+update_env() {
+  if [ -n "$APPS" ]; then
+    NEW_APPS="${APPS} ${APP_ENTRY}"
+  else
+    NEW_APPS="${APP_ENTRY}"
+  fi
+
+  # Update or create APPS in .env
+  if grep -q '^APPS=' "$ENV_FILE"; then
+    sed -i "s|^APPS=.*|APPS=\"${NEW_APPS}\"|" "$ENV_FILE"
+  else
+    echo "APPS=\"${NEW_APPS}\"" >> "$ENV_FILE"
+  fi
+
+  # Keep VITE_APPS in sync for backward compatibility with generate-nginx.sh
+  # VITE_APPS uses the legacy slug:port format (frontend port only)
+  local vite_list=""
+  for entry in $NEW_APPS; do
+    local IFS=':'
+    # shellcheck disable=SC2086
+    set -- $entry
+    local s="$1"
+    local t="${2:-frontend}"
+    case "$t" in
+      frontend)  vite_list="${vite_list:+${vite_list} }${s}:${3}" ;;
+      fullstack) vite_list="${vite_list:+${vite_list} }${s}:${3}" ;;
+      laravel)   vite_list="${vite_list:+${vite_list} }${s}:${3}" ;;
+    esac
+    IFS=' '
+  done
+
+  if grep -q '^VITE_APPS=' "$ENV_FILE"; then
+    sed -i "s|^VITE_APPS=.*|VITE_APPS=\"${vite_list}\"|" "$ENV_FILE"
+  else
+    echo "VITE_APPS=\"${vite_list}\"" >> "$ENV_FILE"
+  fi
+
+  export APPS="$NEW_APPS"
+  export VITE_APPS="$vite_list"
+
+  echo "Added ${APP_ENTRY} to APPS"
+}
+
+redeploy_nginx() {
+  "${SCRIPT_DIR}/deploy-nginx.sh"
+  echo "Nginx redeployed"
+}
+
+print_next_steps() {
+  local domain="\${DOMAIN:-judigot.com}"
+
+  echo ""
+  echo "Next steps for ${SLUG} (${TYPE}):"
+  echo ""
+
+  case "$TYPE" in
+    frontend)
+      cat <<EOF
+  1. Create or clone the app at ~/${SLUG}
+  2. Configure vite.config.ts:
+       base: '/${SLUG}/'
+       server.hmr.path: '/${SLUG}/__vite_hmr'
+       server.port: ${FRONTEND_PORT}
+  3. Start the dev server:
+       cd ~/${SLUG} && bun run dev --host 0.0.0.0 --port ${FRONTEND_PORT}
+  4. Visit: https://${domain}/${SLUG}/
+EOF
+      ;;
+    fullstack)
+      cat <<EOF
+  1. Create or clone the app at ~/${SLUG}
+  2. Configure vite.config.ts:
+       base: '/${SLUG}/'
+       server.hmr.path: '/${SLUG}/__vite_hmr'
+       server.port: ${FRONTEND_PORT}
+  3. Start the frontend:
+       cd ~/${SLUG} && bun run dev --host 0.0.0.0 --port ${FRONTEND_PORT}
+  4. Start the backend:
+       cd ~/${SLUG} && bun run server --port ${BACKEND_PORT}
+  5. Visit: https://${domain}/${SLUG}/
+     API:   https://${domain}/${SLUG}/api/
+EOF
+      if [ "$OPTIONS" = "ws" ]; then
+        echo "     WS:    wss://${domain}/${SLUG}/ws"
+      fi
+      ;;
+    laravel)
+      cat <<EOF
+  1. Create or clone the app at ~/${SLUG}
+  2. Start the server (pick one):
+       php artisan serve --host=0.0.0.0 --port=${BACKEND_PORT}
+       php artisan octane:start --host=0.0.0.0 --port=${BACKEND_PORT}
+  3. Visit: https://${domain}/${SLUG}/
+EOF
+      ;;
+  esac
+}
+
+main "$@"

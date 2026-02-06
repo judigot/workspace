@@ -159,8 +159,8 @@ The widget bundle at `/dev-bubble.js` is a self-contained React IIFE built with 
 
 - **Bubble is always visible** — it never disappears or unmounts
 - **Draggable with edge-snapping** — after drag, bubble animates to the nearest screen edge
-- **On tap**: bubble repositions to top-right, a home button (same size) slides out to its left, and the chat panel slides down below the bubble row. The panel contains WorkspaceShell (app strip + OpenCode iframe)
-- **On tap again (minimize)**: everything moves simultaneously — bubble returns to its previous edge position, home button follows and fades, panel closes. No sequential delays
+- **On tap**: bubble docks to the top of whichever side it is on (left or right), a home button (same size) slides out on the opposite side, and the chat panel slides down below the bubble row. The panel contains WorkspaceShell (app strip + OpenCode iframe)
+- **On tap again (minimize)**: everything moves simultaneously — bubble returns to its saved edge position, home button follows and fades, panel closes. No sequential delays
 - **No header bar inside the panel** — the bubble row (bubble + home button) IS the header, maximizing vertical space
 - **Pop-in animation** on page load (scale 0 → 1)
 
@@ -865,7 +865,7 @@ The dashboard is a **pnpm monorepo** inside `~/workspace/dashboard/`:
 
 - **`packages/dev-bubble`** — WorkspaceShell + DevBubble widget
   - `src/WorkspaceShell.tsx` — **Shared UI component** used by both dashboard and widget:
-    - Horizontal scrollable app strip (chips with icon, name, status dot)
+    - App strip with sticky-left `Apps` label and independently scrollable chips (icon, name, status dot)
     - OpenCode iframe filling remaining vertical space
     - Fetches `/api/apps` for the app list; current app highlighted
     - Accepts optional `header` slot (used by dashboard; the widget does NOT pass a header — the bubble row replaces it)
@@ -874,7 +874,7 @@ The dashboard is a **pnpm monorepo** inside `~/workspace/dashboard/`:
     - Bundles React+ReactDOM + WorkspaceShell (~200KB unminified, ~62KB gzipped)
     - Injected into app pages by nginx `sub_filter`
     - Messenger-style chat head: always-visible draggable bubble with edge-snapping
-    - On tap: bubble docks to top-right, home button slides out to its left, panel drops below
+    - On tap: bubble docks to top-left or top-right based on current side; home button slides out on the opposite side
     - On minimize (tap again): everything moves simultaneously — no sequential waits
     - No header bar in panel — bubble row is the header
     - Configured via `<script>` data attributes: `data-opencode-url`, `data-dashboard-url`
@@ -1041,7 +1041,7 @@ The widget source is at `~/workspace/dashboard/packages/dev-bubble/src/widget.ts
 |---------|-----------------|
 | Constants (`BUBBLE_SIZE`, `BUBBLE_MARGIN`, `BUTTON_GAP`, `ANIM_DURATION`, etc.) | Sizing, spacing, animation timing |
 | `WIDGET_CSS` template literal | All styles — bubble, home button, panel, animations |
-| `clamp()`, `snapX()`, `dockedX()` | Position math and edge-snapping |
+| `clamp()`, `snapX()`, `sideForX()`, `dockedX(side)` | Position math, side-aware docking, and edge-snapping |
 | `DevBubbleWidget` component | State machine: open/close, drag, animation orchestration |
 | Icons (`IconChat`, `IconHome`) | SVG icons rendered inside buttons |
 | `mount()` IIFE | Injects styles and mounts React root on page load |
@@ -1049,7 +1049,7 @@ The widget source is at `~/workspace/dashboard/packages/dev-bubble/src/widget.ts
 ### Current behavior (Messenger-style)
 
 - **Bubble**: always visible, always mounted. Draggable when closed, edge-snaps on release. Pops in on page load (`@keyframes db-btn-enter`).
-- **Open (tap)**: bubble animates to top-right. Home button (same size, dark gradient) slides out to its left after a short delay (`HOME_REVEAL_DELAY`). Panel slides down from below the bubble row. Panel has no header bar — the bubble row IS the header.
+- **Open (tap)**: bubble docks to the top of its current side (`left` or `right`). Home button (same size, dark gradient) slides out on the opposite side after a short delay (`HOME_REVEAL_DELAY`). Panel slides down from below the bubble row. Panel has no header bar — the bubble row IS the header.
 - **Close (tap bubble again)**: everything moves simultaneously — bubble returns to saved position, home button follows and fades, panel closes. No sequential delays.
 - **Spacing**: uniform `BUBBLE_MARGIN` (12px) for all gaps — top edge, right edge, home-to-bubble, bubble-to-panel.
 - **Panel content**: `WorkspaceShell` (app strip + OpenCode iframe), no `header` prop passed.
@@ -1092,6 +1092,10 @@ curl -s -o /dev/null -w "%{http_code}" https://judigot.com/dev-bubble.js
 
 **Change edge-snap behavior**: modify `snapX()` function. Currently snaps to nearest horizontal edge.
 
+**Change dock side behavior**: modify `sideForX()` and `dockedX(side)` to control whether maximize docks left/right or always to a fixed side.
+
+**Remove focus rings/outlines**: ensure `:focus` and `:focus-visible` are explicitly styled on `.db-btn` and `.db-home` to prevent browser default white outlines after minimize.
+
 **Add new buttons alongside bubble**: follow the home button pattern — fixed-position element whose `left`/`top` is computed relative to `pos`, with a CSS `transform` + `opacity` reveal transition and a state flag to control visibility.
 
 ### Key constraints
@@ -1108,7 +1112,7 @@ curl -s -o /dev/null -w "%{http_code}" https://judigot.com/dev-bubble.js
 2. **Always kill stale port processes before restarting** — Vite will silently pick a different port
 3. **Use `strictPort: true`** in all Vite configs to fail loud instead of silently rebinding
 4. **The dashboard reads `.env` live** — no restart needed for app list changes
-5. **The DevBubble widget is injected by nginx** — `sub_filter` adds a `<script>` tag to every app page. The widget is a Messenger-style chat head (always-visible bubble, edge-snapping, panel anchored below bubble row). It's a self-contained React IIFE (React+ReactDOM bundled). To modify: edit `widget.tsx`, rebuild with esbuild, redeploy with `deploy-nginx.sh`, hard-refresh the app page. See the "Modifying the DevBubble Widget" playbook below.
+5. **The DevBubble widget is injected by nginx** — `sub_filter` adds a `<script>` tag to every app page. The widget is a Messenger-style chat head (always-visible bubble, edge-snapping, side-aware top docking, opposite-side home button, panel anchored below bubble row). It's a self-contained React IIFE (React+ReactDOM bundled). To modify: edit `widget.tsx`, rebuild with esbuild, redeploy with `deploy-nginx.sh`, hard-refresh the app page. See the "Modifying the DevBubble Widget" playbook below.
 6. **Dashboard is inside the workspace repo** at `~/workspace/dashboard/` — it is NOT a separate repository
 7. **`APPS` in `.env` is the single source of truth** for what apps exist and how they're routed
 8. **Always use SSH for git operations** — use `git@github.com:` URLs, not `https://github.com/`. HTTPS will fail because no credential helper is configured. If a repo already uses an HTTPS remote, switch it: `git remote set-url origin git@github.com:<owner>/<repo>.git`

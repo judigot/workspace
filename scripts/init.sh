@@ -191,31 +191,17 @@ SSL_KEY="/etc/letsencrypt/live/${DOMAIN}/privkey.pem"
 
 ALL_DOMAINS="${DOMAIN},${WWW_DOMAIN},${OPENCODE_SUBDOMAIN},${WORKSPACE_SUBDOMAIN}"
 
-if [ -f "$SSL_CERT" ] && [ -f "$SSL_KEY" ]; then
-  # Check if existing cert already covers all domains
-  EXISTING_DOMAINS=$(sudo openssl x509 -in "$SSL_CERT" -noout -text 2>/dev/null \
-    | grep -oP '(?<=DNS:)[^,\s]+' | sort | tr '\n' ',' | sed 's/,$//')
-  NEEDED_DOMAINS=$(printf '%s' "$ALL_DOMAINS" | tr ',' '\n' | sort | tr '\n' ',' | sed 's/,$//')
-
-  if [ "$EXISTING_DOMAINS" = "$NEEDED_DOMAINS" ]; then
-    ok "Certs exist and cover all domains"
-  else
-    warn "Certs exist but may not cover all domains — expanding..."
-    sudo systemctl stop nginx 2>/dev/null || true
-    sudo certbot certonly --standalone --expand \
-      -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" -d "$WORKSPACE_SUBDOMAIN" \
-      --non-interactive --agree-tos --no-eff-email -m "$CERTBOT_EMAIL"
-    ok "Certs expanded"
-  fi
-else
-  warn "No certs found — issuing via certbot..."
-  sudo systemctl stop nginx 2>/dev/null || true
-  sudo certbot certonly --standalone \
-    --cert-name "$DOMAIN" --keep-until-expiring \
-    -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" -d "$WORKSPACE_SUBDOMAIN" \
-    --non-interactive --agree-tos --no-eff-email -m "$CERTBOT_EMAIL"
-  ok "Certs issued"
-fi
+# Single idempotent certbot command handles all cases:
+# - No cert yet: issues a new one
+# - Cert exists, same domains, not expiring: keeps it (no-op)
+# - Cert exists, different domains: expands
+# - Cert exists, near expiry: renews
+sudo systemctl stop nginx 2>/dev/null || true
+sudo certbot certonly --standalone \
+  --cert-name "$DOMAIN" --keep-until-expiring \
+  -d "$DOMAIN" -d "$WWW_DOMAIN" -d "$OPENCODE_SUBDOMAIN" -d "$WORKSPACE_SUBDOMAIN" \
+  --non-interactive --agree-tos --no-eff-email -m "$CERTBOT_EMAIL"
+ok "Certs ready"
 
 # ─── Step 4: Nginx ───────────────────────────────────────────────────────────
 

@@ -12,16 +12,6 @@ SSL_CERT=${SSL_CERT:-"/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"}
 SSL_KEY=${SSL_KEY:-"/etc/letsencrypt/live/${DOMAIN}/privkey.pem"}
 
 OPENCODE_BACKEND=${OPENCODE_BACKEND:-"127.0.0.1:4097"}
-OPENCODE_SERVER_USERNAME=${OPENCODE_SERVER_USERNAME:-""}
-OPENCODE_SERVER_PASSWORD=${OPENCODE_SERVER_PASSWORD:-""}
-
-# Base64-encode credentials for nginx to forward to OpenCode
-# This lets the opencode.judigot.com iframe work without a browser auth prompt
-if [ -n "$OPENCODE_SERVER_USERNAME" ] && [ -n "$OPENCODE_SERVER_PASSWORD" ]; then
-  OPENCODE_AUTH_BASIC=$(printf '%s:%s' "$OPENCODE_SERVER_USERNAME" "$OPENCODE_SERVER_PASSWORD" | base64)
-else
-  OPENCODE_AUTH_BASIC=""
-fi
 
 WORKSPACE_ROOT=${WORKSPACE_ROOT:-"/var/www/workspace"}
 DASHBOARD_PORT=${DASHBOARD_PORT:-3200}
@@ -398,16 +388,6 @@ server {
         proxy_read_timeout 86400s;
         proxy_buffering off;
         proxy_hide_header X-Frame-Options;
-        proxy_hide_header WWW-Authenticate;
-EOF
-
-  if [ -n "$OPENCODE_AUTH_BASIC" ]; then
-    cat >> "$OUTPUT" <<EOF
-        proxy_set_header Authorization "Basic ${OPENCODE_AUTH_BASIC}";
-EOF
-  fi
-
-  cat >> "$OUTPUT" <<EOF
     }
 }
 

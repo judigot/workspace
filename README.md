@@ -47,7 +47,6 @@ Then it automatically:
 |-----|-------------|
 | `https://judigot.com` | Workspace — app strip + OpenCode |
 | `https://opencode.judigot.com` | OpenCode (standalone, also embedded in the workspace shell) |
-| `https://workspace.judigot.com` | Workspace (alias for `judigot.com`) |
 
 ---
 
@@ -182,7 +181,7 @@ Reads `.env` for defaults. Skips certs if they already exist on disk. Restarts s
 ## Architecture
 
 ```
-judigot.com (+ workspace.judigot.com alias)
+judigot.com
         │
         ▼
    Nginx (:443, SSL)

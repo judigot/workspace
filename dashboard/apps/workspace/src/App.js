@@ -5,7 +5,7 @@ var shell_1 = require("@dashboard/dev-bubble/shell");
 var style = document.createElement("style");
 style.textContent = shell_1.WORKSPACE_SHELL_CSS;
 document.head.appendChild(style);
-// Extract base domain (e.g. "judigot.com" from "workspace.judigot.com" or "www.judigot.com")
+// Extract base domain (e.g. "judigot.com" from "www.judigot.com")
 var getBaseDomain = function (hostname) {
     var parts = hostname.split(".");
     return parts.length > 2 ? parts.slice(-2).join(".") : hostname;

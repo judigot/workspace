@@ -145,7 +145,6 @@ prompt_secret  ANTHROPIC_API_KEY       "Anthropic API key"            "${ANTHROP
 # Derived values
 WWW_DOMAIN=${WWW_DOMAIN:-"www.${DOMAIN}"}
 OPENCODE_SUBDOMAIN=${OPENCODE_SUBDOMAIN:-"opencode.${DOMAIN}"}
-WORKSPACE_SUBDOMAIN=${WORKSPACE_SUBDOMAIN:-"workspace.${DOMAIN}"}
 OPENCODE_PORT=${OPENCODE_PORT:-4097}
 OPENCODE_BACKEND=${OPENCODE_BACKEND:-"127.0.0.1:${OPENCODE_PORT}"}
 API_BACKEND=${API_BACKEND:-"127.0.0.1:5000"}
@@ -165,7 +164,6 @@ cat > "$ENV_FILE" <<EOF
 DOMAIN=${DOMAIN}
 WWW_DOMAIN=${WWW_DOMAIN}
 OPENCODE_SUBDOMAIN=${OPENCODE_SUBDOMAIN}
-WORKSPACE_SUBDOMAIN=${WORKSPACE_SUBDOMAIN}
 OPENCODE_PORT=${OPENCODE_PORT}
 OPENCODE_BACKEND=${OPENCODE_BACKEND}
 OPENCODE_SERVER_USERNAME=${OPENCODE_SERVER_USERNAME}
@@ -189,7 +187,7 @@ step 3 "TLS certificates"
 SSL_CERT="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
 SSL_KEY="/etc/letsencrypt/live/${DOMAIN}/privkey.pem"
 
-ALL_DOMAINS="${DOMAIN},${WWW_DOMAIN},${OPENCODE_SUBDOMAIN},${WORKSPACE_SUBDOMAIN}"
+ALL_DOMAINS="${DOMAIN},${WWW_DOMAIN},${OPENCODE_SUBDOMAIN}"
 
 # Idempotent TLS: if cert files already exist, skip certbot entirely.
 # This avoids all interactive prompts and rate-limit issues on reruns.
@@ -213,7 +211,7 @@ step 4 "Nginx"
 DASHBOARD_PORT=${DASHBOARD_PORT:-3200}
 DASHBOARD_API_PORT=${DASHBOARD_API_PORT:-3100}
 
-export DOMAIN WWW_DOMAIN OPENCODE_SUBDOMAIN WORKSPACE_SUBDOMAIN
+export DOMAIN WWW_DOMAIN OPENCODE_SUBDOMAIN
 export SSL_CERT SSL_KEY
 export VITE_SCAFFOLDER_PORT API_BACKEND OPENCODE_BACKEND
 export WORKSPACE_ROOT VITE_APPS DASHBOARD_PORT DASHBOARD_API_PORT
@@ -300,7 +298,7 @@ ok "Dashboard lives at ${DASHBOARD_DIR} (part of workspace repo)"
 # Install deps
 if [ ! -d "${DASHBOARD_DIR}/node_modules" ]; then
   warn "Installing dashboard dependencies..."
-  (cd "${DASHBOARD_DIR}" && pnpm install --frozen-lockfile 2>/dev/null || pnpm install)
+  (cd "${DASHBOARD_DIR}" && bun install)
   ok "Dependencies installed"
 else
   ok "Dependencies already installed"
@@ -310,7 +308,7 @@ fi
 WIDGET_OUT="${ROOT_DIR}/dist/dev-bubble.js"
 warn "Building DevBubble widget..."
 mkdir -p "${ROOT_DIR}/dist"
-(cd "${DASHBOARD_DIR}" && npx esbuild packages/dev-bubble/src/widget.tsx \
+(cd "${DASHBOARD_DIR}" && bunx esbuild packages/dev-bubble/src/widget.tsx \
   --bundle --minify --format=iife --target=es2020 --jsx=automatic \
   --outfile="${WIDGET_OUT}")
 ok "DevBubble widget built ($(du -h "${WIDGET_OUT}" | cut -f1))"
@@ -332,7 +330,7 @@ User=$(whoami)
 Environment="PATH=${NODE_BIN}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Environment="DASHBOARD_API_PORT=${DASHBOARD_API_PORT}"
 Environment="WORKSPACE_ENV_PATH=${ROOT_DIR}/.env"
-ExecStart=${NODE_BIN}/npx tsx ${DASHBOARD_DIR}/apps/workspace/src/server/index.ts
+ExecStart=${NODE_BIN}/bunx tsx ${DASHBOARD_DIR}/apps/workspace/src/server/index.ts
 Restart=always
 RestartSec=5
 WorkingDirectory=${DASHBOARD_DIR}/apps/workspace
@@ -353,7 +351,7 @@ Type=simple
 User=$(whoami)
 Environment="PATH=${NODE_BIN}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Environment="DASHBOARD_API_PORT=${DASHBOARD_API_PORT}"
-ExecStart=${NODE_BIN}/npx vite --host 127.0.0.1 --port ${DASHBOARD_PORT}
+ExecStart=${NODE_BIN}/bunx vite --host 127.0.0.1 --port ${DASHBOARD_PORT}
 Restart=always
 RestartSec=5
 WorkingDirectory=${DASHBOARD_DIR}/apps/workspace
@@ -388,9 +386,8 @@ bold "════════════════════════�
 bold "  Workspace is live"
 bold "═══════════════════════════════════════════════════════"
 printf '\n'
-cyan "  https://${DOMAIN}                → OpenCode"
+cyan "  https://${DOMAIN}                → Dashboard + apps"
 cyan "  https://${OPENCODE_SUBDOMAIN}    → OpenCode (embeddable)"
-cyan "  https://${WORKSPACE_SUBDOMAIN}   → Dashboard"
 printf '\n'
 printf '  Auth: %s / ****\n' "$OPENCODE_SERVER_USERNAME"
 printf '\n'

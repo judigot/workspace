@@ -40,10 +40,10 @@ This triggers because port conflicts are a common ops issue on this workspace.
 
 <example>
 Context: The dashboard is down.
-user: "judigot.com is broken" or "workspace.judigot.com is broken"
+user: "judigot.com is broken"
 assistant: "I'll check if the dashboard Vite and API servers are running, restart them if needed, and verify nginx is proxying correctly."
 <commentary>
-This triggers because the dashboard (served at judigot.com, with workspace.judigot.com as alias) has two processes (API on 3100, Vite on 3200) and nginx proxies to them.
+This triggers because the dashboard (served at judigot.com) has two processes (API on 3100, Vite on 3200) and nginx proxies to them.
 </commentary>
 </example>
 
@@ -136,7 +136,7 @@ This is a **single EC2 instance** running Ubuntu. Everything runs on one box:
 ```
 Browser → Nginx (:443 SSL)
   │
-  ├─ judigot.com (+ workspace.judigot.com alias)
+  ├─ judigot.com
   │   ├─ /                    → Dashboard Vite (:3200)  ← WorkspaceShell (app strip + OpenCode)
   │   ├─ /api/*               → Dashboard Hono API (:3100)
   │   ├─ /dev-bubble.js       → Static widget bundle (/var/www/static/)
@@ -302,7 +302,6 @@ sudo journalctl -u nginx -n 20   # Recent logs
 # All endpoints
 curl -s -o /dev/null -w "%{http_code}" https://judigot.com/                 # 200 (Dashboard)
 curl -s -o /dev/null -w "%{http_code}" https://opencode.judigot.com/        # 200 (OpenCode, auth injected by nginx)
-curl -s -o /dev/null -w "%{http_code}" https://workspace.judigot.com/       # 200 (Dashboard, alias)
 curl -s http://localhost:3100/api/apps | python3 -m json.tool               # JSON with app list
 
     # DevBubble widget
@@ -996,8 +995,7 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:3100/api/apps  # Dashboa
 
 # 5. Can we reach through nginx?
 curl -s -o /dev/null -w "%{http_code}" https://judigot.com/
-curl -s -o /dev/null -w "%{http_code}" https://judigot.com/
-curl -s -o /dev/null -w "%{http_code}" https://workspace.judigot.com/
+curl -s -o /dev/null -w "%{http_code}" https://opencode.judigot.com/
 
 # 6. Check .env
 cat ~/workspace/.env

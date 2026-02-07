@@ -17,7 +17,6 @@ set +a
 
 DOMAIN=${DOMAIN:-"judigot.com"}
 OPENCODE_SUBDOMAIN=${OPENCODE_SUBDOMAIN:-"opencode.${DOMAIN}"}
-WORKSPACE_SUBDOMAIN=${WORKSPACE_SUBDOMAIN:-"workspace.${DOMAIN}"}
 OPENCODE_PORT=${OPENCODE_PORT:-4097}
 
 FAILURES=0
@@ -49,9 +48,6 @@ check "https://${DOMAIN}" \
 
 check "https://${OPENCODE_SUBDOMAIN}" \
   "https://${OPENCODE_SUBDOMAIN}" "200|401"
-
-check "https://${WORKSPACE_SUBDOMAIN}" \
-  "https://${WORKSPACE_SUBDOMAIN}" "200"
 
 # HTTP redirect
 check "http://${DOMAIN} → HTTPS redirect" \

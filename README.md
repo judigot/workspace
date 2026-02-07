@@ -18,16 +18,14 @@ SSH into the instance and load the devrc toolchain:
 initubuntu
 installnodeenv
 usessh
-installAWS
-useaws
-installgithubcli
-```
 
-**Step 2 — Clone and run init**
-
-```sh
-git clone git@github.com:judigot/workspace.git ~/workspace
+# Preserve .env across re-clone (holds domain, creds, API keys)
+[ -f ~/workspace/.env ] && cp ~/workspace/.env /tmp/workspace-env-backup
+cd ~ && rm -rf ~/workspace
+git clone https://github.com/judigot/workspace.git ~/workspace
+[ -f /tmp/workspace-env-backup ] && mv /tmp/workspace-env-backup ~/workspace/.env
 cd ~/workspace
+[ -f .env ] || cp .env.example .env
 ./scripts/init.sh
 ```
 
@@ -43,7 +41,7 @@ Then it automatically:
 4. Creates and starts the `opencode.service` systemd unit
 5. Installs dashboard deps and starts the dashboard services
 
-**Step 3 — Open the browser**
+**Step 2 — Open the browser**
 
 | URL | What you see |
 |-----|-------------|

@@ -29,11 +29,19 @@ import React, {
 } from "react";
 import { createRoot } from "react-dom/client";
 import { WorkspaceShell, WORKSPACE_SHELL_CSS } from "./WorkspaceShell";
+import {
+  getSecondaryPanel,
+  initialBubblePanelState,
+  openPanel as openPanelState,
+  closePanel as closePanelState,
+  tapPanelBubble as tapPanelBubbleState,
+  type PanelId,
+} from "./widget-state";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-const BUBBLE_SIZE = 60;
+const BUBBLE_SIZE = 54;
 const BUBBLE_MARGIN = 12;
 /** Gap between home button and bubble, and bubble to chat — all equal to BUBBLE_MARGIN. */
 const BUTTON_GAP = BUBBLE_MARGIN;
@@ -84,50 +92,50 @@ const WIDGET_CSS = `
     align-items: center;
     justify-content: center;
     color: white;
-    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
     z-index: 100000;
     touch-action: none;
     user-select: none;
     padding: 0;
     outline: none;
     transition: none;
-    animation: db-btn-enter ${ANIM_DURATION}ms cubic-bezier(0.25, 1, 0.5, 1) both;
+    animation: db-btn-enter ${ANIM_DURATION}ms cubic-bezier(0.25, 1, 0.5, 1);
+  }
+  .db-btn-terminal {
+    background: linear-gradient(135deg, #0f766e 0%, #155e75 100%);
   }
   @keyframes db-btn-enter {
-    from { transform: scale(0); opacity: 0; }
-    to { transform: scale(1); opacity: 1; }
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
-  .db-btn:focus, .db-btn:focus-visible { outline: none; box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4); }
+  .db-btn:focus, .db-btn:focus-visible { outline: none; }
   .db-btn:active { cursor: grabbing; }
   .db-btn-animating {
     transition: left ${ANIM_DURATION}ms cubic-bezier(0.25, 1, 0.5, 1),
                 top ${ANIM_DURATION}ms cubic-bezier(0.25, 1, 0.5, 1),
-                box-shadow ${ANIM_DURATION}ms ease;
+                transform ${ANIM_DURATION}ms ease;
   }
-  .db-btn-active {
-    box-shadow: 0 2px 12px rgba(102, 126, 234, 0.3);
+  .db-btn.db-active {
+    transform: scale(1.08) !important;
     cursor: pointer;
   }
   @media (hover: hover) {
     .db-btn:hover {
-      box-shadow: 0 6px 28px rgba(102, 126, 234, 0.5);
+      transform: scale(1);
     }
   }
 
-  /* ── Home button ── same size as bubble, slides in from behind bubble */
-  .db-home {
+  /* ── Side buttons (home + terminal) ── */
+  .db-side-btn {
     position: fixed;
     width: ${BUBBLE_SIZE}px;
     height: ${BUBBLE_SIZE}px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #2d3436 0%, #636e72 100%);
     border: none;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     color: white;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
     z-index: 99999;
     padding: 0;
     outline: none;
@@ -139,15 +147,27 @@ const WIDGET_CSS = `
                 transform ${HOME_SLIDE_DURATION}ms cubic-bezier(0.25, 1, 0.5, 1),
                 opacity ${HOME_SLIDE_DURATION}ms ease;
   }
-  .db-home:focus, .db-home:focus-visible { outline: none; }
-  .db-home-visible {
+  .db-side-btn:focus, .db-side-btn:focus-visible { outline: none; }
+  .db-home {
+    background: linear-gradient(135deg, #2d3436 0%, #636e72 100%);
+  }
+  .db-terminal {
+    background: linear-gradient(135deg, #0f766e 0%, #155e75 100%);
+  }
+  .db-assistant {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  }
+  .db-side-btn-visible {
     transform: translateX(0) scale(1) !important;
     opacity: 1;
     pointer-events: auto;
   }
+  .db-side-btn.db-active {
+    transform: translateX(0) scale(1.08) !important;
+  }
   @media (hover: hover) {
-    .db-home:hover {
-      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+    .db-side-btn:hover {
+      transform: translateX(0) scale(1);
     }
   }
 
@@ -201,11 +221,16 @@ const IconHome: FC = () => (
   </svg>
 );
 
+const IconTerminal: FC = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
+    <path d="M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm1 2v10h14V7H5zm2.2 2.3 3 2.7-3 2.7 1.4 1.5 4.7-4.2-4.7-4.2-1.4 1.5zM12 15h5v-2h-5v2z" />
+  </svg>
+);
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 type DockSide = "left" | "right";
-
 function clamp(x: number, y: number) {
   return {
     x: Math.max(BUBBLE_MARGIN, Math.min(window.innerWidth - BUBBLE_SIZE - BUBBLE_MARGIN, x)),
@@ -246,13 +271,19 @@ const DevBubbleWidget: FC = () => {
   const animTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Panel state ──
-  const [isOpen, setIsOpen] = useState(false);
+  const [panelState, setPanelState] = useState(initialBubblePanelState);
+  const { isOpen, collapsedPanel, activePanel, selectedPanel } = panelState;
   const [hasOpened, setHasOpened] = useState(false);
+
+  // Invariants (simplified):
+  // 1) Single source of truth: activePanel decides which bubble is active-sized.
+  // 2) Minimize only on second tap of currently selected+active bubble.
+  // 3) Bubble used to minimize becomes collapsedPanel (the draggable identity).
 
   // ── Which side the bubble docked to ──
   const [dockSide, setDockSide] = useState<DockSide>("right");
 
-  // ── Home button visibility ──
+  // ── Side button visibility ──
   const [homeVisible, setHomeVisible] = useState(false);
   const homeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -279,13 +310,13 @@ const DevBubbleWidget: FC = () => {
   }, []);
 
   // ── Open ── dock to whichever side the bubble is currently on.
-  const openPanel = useCallback(() => {
+  const openPanel = useCallback((panel: PanelId = "assistant") => {
     savedPos.current = { ...posRef.current };
     if (!hasOpened) setHasOpened(true);
     const side = sideForX(posRef.current.x);
     setDockSide(side);
     const target = clamp(dockedX(side), BUBBLE_MARGIN);
-    setIsOpen(true);
+    setPanelState((prev) => openPanelState(prev, panel));
     animateTo(target);
     if (homeTimer.current) clearTimeout(homeTimer.current);
     homeTimer.current = setTimeout(() => {
@@ -295,9 +326,9 @@ const DevBubbleWidget: FC = () => {
   }, [hasOpened, animateTo]);
 
   // ── Close ── everything moves at once.
-  const closePanel = useCallback(() => {
+  const closePanel = useCallback((panel: PanelId) => {
     setHomeVisible(false);
-    setIsOpen(false);
+    setPanelState((prev) => closePanelState(prev, panel));
     if (homeTimer.current) {
       clearTimeout(homeTimer.current);
       homeTimer.current = null;
@@ -308,6 +339,18 @@ const DevBubbleWidget: FC = () => {
       savedPos.current = null;
     }
   }, [animateTo]);
+
+  const tapPanelBubble = useCallback((panel: PanelId) => {
+    if (!isOpen) {
+      openPanel(panel);
+      return;
+    }
+    if (activePanel === panel && selectedPanel === panel) {
+      closePanel(panel);
+      return;
+    }
+    setPanelState((prev) => tapPanelBubbleState(prev, panel));
+  }, [isOpen, activePanel, selectedPanel, openPanel, closePanel]);
 
   // ── Edge-snap after drag ──
   const snapToEdge = useCallback((fromX: number, fromY: number) => {
@@ -352,7 +395,7 @@ const DevBubbleWidget: FC = () => {
     (e: ReactPointerEvent<HTMLButtonElement>) => {
       if (isOpen) {
         e.preventDefault();
-        closePanel();
+        tapPanelBubble(collapsedPanel);
         return;
       }
       if (!dragging.current) return;
@@ -363,10 +406,10 @@ const DevBubbleWidget: FC = () => {
       if (wasDrag) {
         snapToEdge(posRef.current.x, posRef.current.y);
       } else {
-        openPanel();
+        openPanel(collapsedPanel);
       }
     },
-    [isOpen, closePanel, snapToEdge, openPanel],
+    [isOpen, collapsedPanel, tapPanelBubble, snapToEdge, openPanel],
   );
 
   const onPointerCancel = useCallback(() => {
@@ -397,35 +440,45 @@ const DevBubbleWidget: FC = () => {
   }, [isOpen, dockSide]);
 
   // ── Layout calculations ──
-  // Home button sits on the OPPOSITE side of the bubble.
-  const homeLeft = dockSide === "right"
-    ? pos.x - BUBBLE_SIZE - BUTTON_GAP   // home to the left
-    : pos.x + BUBBLE_SIZE + BUTTON_GAP;  // home to the right
-  const homeTop = pos.y;
+  const lane = BUBBLE_SIZE + BUTTON_GAP;
+  const sideDir = dockSide === "right" ? -1 : 1;
 
-  // Hidden-state translateX: push home behind the bubble.
-  // If docked right, home hides by translating to the right (positive X).
-  // If docked left, home hides by translating to the left (negative X).
-  const homeHiddenTx = dockSide === "right"
-    ? BUBBLE_SIZE + BUTTON_GAP
-    : -(BUBBLE_SIZE + BUTTON_GAP);
+  const secondaryPanel: PanelId = getSecondaryPanel(collapsedPanel);
+
+  // Secondary panel bubble sits adjacent to the main bubble. Home is outermost.
+  const secondaryLeft = pos.x + sideDir * lane;
+  const homeLeft = pos.x + sideDir * lane * 2;
+  const homeTop = pos.y;
+  const secondaryTop = pos.y;
+
+  // Hidden-state translateX pushes side buttons behind the bubble.
+  const secondaryHiddenTx = dockSide === "right" ? lane : -lane;
+  const homeHiddenTx = dockSide === "right" ? lane * 2 : -lane * 2;
 
   // Panel anchored below the bubble row.
   const panelTop = pos.y + BUBBLE_SIZE + BUBBLE_MARGIN;
   const panelTopClosed = window.innerHeight + 10;
 
   // ── Classes ──
+  const isMainActive = activePanel === collapsedPanel;
+  const isSecondaryActive = isOpen && activePanel === secondaryPanel;
+
   let bubbleClass = "db-btn";
+  if (collapsedPanel === "terminal") bubbleClass += " db-btn-terminal";
   if (animating) bubbleClass += " db-btn-animating";
-  if (isOpen) bubbleClass += " db-btn-active";
+  if (isMainActive) bubbleClass += " db-active";
 
   let panelClass = "db-panel";
   if (isOpen) panelClass += " db-panel-open";
   else if (hasOpened) panelClass += " db-panel-closed";
   else panelClass += " db-panel-hidden";
 
-  let homeClass = "db-home";
-  if (homeVisible) homeClass += " db-home-visible";
+  let homeClass = "db-side-btn db-home";
+  if (homeVisible) homeClass += " db-side-btn-visible";
+
+  let secondaryClass = `db-side-btn ${secondaryPanel === "terminal" ? "db-terminal" : "db-assistant"}`;
+  if (homeVisible) secondaryClass += " db-side-btn-visible";
+  if (isSecondaryActive) secondaryClass += " db-active";
 
   return (
     <>
@@ -434,7 +487,11 @@ const DevBubbleWidget: FC = () => {
         className={panelClass}
         style={{ top: isOpen ? panelTop : panelTopClosed }}
       >
-        <WorkspaceShell opencodeUrl={OPENCODE_URL} />
+        <WorkspaceShell
+          opencodeUrl={OPENCODE_URL}
+          mode={activePanel}
+          terminalWsPath="/api/terminal/ws"
+        />
       </div>
 
       {/* Home button — positioned on opposite side of bubble */}
@@ -454,17 +511,32 @@ const DevBubbleWidget: FC = () => {
         <IconHome />
       </button>
 
+      {/* Secondary panel button — toggles to the other panel */}
+      <button
+        className={secondaryClass}
+        aria-label={secondaryPanel === "terminal" ? "Open terminal" : "Open assistant"}
+        title={secondaryPanel === "terminal" ? "Terminal" : "Assistant"}
+        style={{
+          left: secondaryLeft,
+          top: secondaryTop,
+          transform: `translateX(${secondaryHiddenTx}px) scale(0.8)`,
+        }}
+        onClick={() => tapPanelBubble(secondaryPanel)}
+      >
+        {secondaryPanel === "terminal" ? <IconTerminal /> : <IconChat />}
+      </button>
+
       {/* Bubble — always visible */}
       <button
         className={bubbleClass}
-        aria-label={isOpen ? "Minimize chat" : "Open assistant"}
+        aria-label={isOpen ? "Toggle selected panel" : collapsedPanel === "terminal" ? "Open terminal" : "Open assistant"}
         style={{ left: pos.x, top: pos.y }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
       >
-        <IconChat />
+        {collapsedPanel === "terminal" ? <IconTerminal /> : <IconChat />}
       </button>
     </>
   );

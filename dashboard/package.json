@@ -16,6 +16,8 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "test": "turbo run test",
+    "vitest": "vitest --run",
+    "vitest:watch": "vitest",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean",
@@ -45,6 +47,7 @@
     "prettier": "^3.7.3",
     "turbo": "^2.3.3",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.48.0"
+    "typescript-eslint": "^8.48.0",
+    "vitest": "^4.0.14"
   }
 }

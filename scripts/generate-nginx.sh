@@ -198,7 +198,9 @@ server {
     # Serve the DevBubble widget JS as a static file
     location = /dev-bubble.js {
         alias ${WIDGET_DIR}/dev-bubble.js;
-        add_header Cache-Control "public, max-age=300";
+        add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0";
+        add_header Pragma "no-cache";
+        add_header Expires "0";
         add_header Content-Type "application/javascript";
         add_header X-Content-Type-Options "nosniff" always;
     }
@@ -460,11 +462,15 @@ cat >> "$OUTPUT" <<EOF
     location /api/ {
         proxy_pass http://dashboard_api/api/;
         proxy_http_version 1.1;
-        proxy_set_header Connection "";
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \$connection_upgrade;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+        proxy_buffering off;
     }
 
     location / {
@@ -537,11 +543,15 @@ server {
     location /api/ {
         proxy_pass http://dashboard_api/api/;
         proxy_http_version 1.1;
-        proxy_set_header Connection "";
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \$connection_upgrade;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+        proxy_buffering off;
     }
 
     location / {

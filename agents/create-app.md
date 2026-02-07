@@ -1043,6 +1043,7 @@ The widget source is at `~/workspace/dashboard/packages/dev-bubble/src/widget.ts
 | `WIDGET_CSS` template literal | All styles — bubble, home button, panel, animations |
 | `clamp()`, `snapX()`, `sideForX()`, `dockedX(side)` | Position math, side-aware docking, and edge-snapping |
 | `DevBubbleWidget` component | State machine: open/close, drag, animation orchestration |
+| `widget-state.ts` | Pure state transitions for bubble invariants (open/select/minimize/secondary panel) |
 | Icons (`IconChat`, `IconHome`) | SVG icons rendered inside buttons |
 | `mount()` IIFE | Injects styles and mounts React root on page load |
 
@@ -1054,6 +1055,30 @@ The widget source is at `~/workspace/dashboard/packages/dev-bubble/src/widget.ts
 - **Spacing**: uniform `BUBBLE_MARGIN` (12px) for all gaps — top edge, right edge, home-to-bubble, bubble-to-panel.
 - **Panel content**: `WorkspaceShell` (app strip + OpenCode iframe), no `header` prop passed.
 
+### Invariant-first interaction workflow (required for bubble behavior changes)
+
+When changing bubble interactions (tap, select, switch, minimize, icon/state behavior), use an **invariant-first** workflow before coding.
+
+1. **Write invariants first** (3-7 clear rules) in plain language.
+2. **Map each tap path** to an invariant (`closed tap`, `open tap selected`, `open tap non-selected`, drag end, minimize).
+3. **Implement state transitions** to satisfy invariants (prefer explicit state fields over implicit UI-derived behavior).
+4. **Verify each invariant manually** on mobile after deploy.
+
+Recommended invariants for DevBubble panel selection:
+
+- **I1 Closed identity**: when closed, `activePanel === selectedPanel === collapsedPanel`.
+- **I2 Selection first**: first tap on a bubble selects/activates its panel.
+- **I3 Minimize on second tap**: minimize only when tapping the currently selected+active bubble again.
+- **I4 Collapse ownership**: bubble used to minimize becomes the collapsed floating bubble identity.
+- **I5 Stable positions**: Home/Assistant/Terminal positions remain deterministic (mirrored for left/right docking).
+- **I6 Active highlight**: active bubble is visibly highlighted (not always chat by default).
+
+Implementation guidance:
+
+- For simple interactions, `useState` is acceptable.
+- When interaction rules become coupled (selected vs active vs collapsed), use `useReducer` to centralize transitions and avoid contradictory state updates.
+- Do not implement behavior by swapping icons alone; tie visuals to explicit interaction state.
+
 ### Edit → Build → Deploy → Verify cycle
 
 ```sh
@@ -1062,7 +1087,7 @@ The widget source is at `~/workspace/dashboard/packages/dev-bubble/src/widget.ts
 
 # 2. Build the IIFE bundle
 cd ~/workspace/dashboard
-npx esbuild packages/dev-bubble/src/widget.tsx \
+bunx esbuild packages/dev-bubble/src/widget.tsx \
   --bundle --minify --format=iife \
   --outfile=../dist/dev-bubble.js \
   --target=es2020 --jsx=automatic
@@ -1077,6 +1102,31 @@ curl -s -o /dev/null -w "%{http_code}" https://judigot.com/dev-bubble.js
 # 5. Hard-refresh the app page in the browser (Ctrl+Shift+R)
 #    The widget JS is cached by the browser — a normal refresh may show stale code.
 ```
+
+### Test lock-in (Vitest)
+
+When bubble behavior stabilizes, lock invariants with unit tests before further UI tweaks.
+
+Files:
+
+- `~/workspace/dashboard/packages/dev-bubble/src/widget-state.ts` — pure transition helpers
+- `~/workspace/dashboard/packages/dev-bubble/src/widget-state.test.ts` — invariant tests
+- `~/workspace/dashboard/vitest.config.ts` — root vitest config
+
+Run:
+
+```sh
+cd ~/workspace/dashboard
+bunx vitest run packages/dev-bubble/src/widget-state.test.ts --config vitest.config.ts
+```
+
+Required coverage goals for bubble logic:
+
+- First tap selects/opens panel
+- First tap on other bubble switches panel (no minimize)
+- Second tap on selected+active bubble minimizes
+- Minimize sets `collapsedPanel` to the triggering panel
+- `secondaryPanel` is always opposite of `collapsedPanel`
 
 ### Common modifications
 

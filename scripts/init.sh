@@ -93,6 +93,11 @@ install_missing_system_prereqs() {
     missing+=("certbot" "python3-certbot-nginx")
   fi
 
+  # Native Node modules (e.g. node-pty) require a compiler toolchain.
+  if ! command -v g++ >/dev/null 2>&1; then
+    missing+=("build-essential")
+  fi
+
   if [ ${#missing[@]} -eq 0 ]; then
     return 0
   fi
@@ -291,7 +296,7 @@ if ! ensure_bun_installed; then
   exit 1
 fi
 
-for cmd in nginx certbot node npm bun; do
+for cmd in nginx certbot node npm bun g++; do
   if command -v "$cmd" >/dev/null 2>&1; then
     ok "$cmd $(${cmd} --version 2>&1 | head -1 | grep -oE '[0-9]+\.[0-9]+[.0-9]*' | head -1)"
   else

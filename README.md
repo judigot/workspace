@@ -17,7 +17,9 @@ set -euo pipefail
 
 . <(curl -fsSL "https://raw.githubusercontent.com/judigot/user/main/load-devrc.sh?cachebustkey=$(date +%s)")
 
-initubuntu && installnodeenv && usessh
+initubuntu && \
+installnodeenv && \
+usessh
 
 # Preserve .env across re-clone (holds domain, creds, API keys)
 [ -f ~/workspace/.env ] && cp ~/workspace/.env /tmp/workspace-env-backup

@@ -133,34 +133,6 @@ install_missing_system_prereqs() {
   ok "Installed missing system prerequisites"
 }
 
-ensure_bun_installed() {
-  if command -v bun >/dev/null 2>&1; then
-    return 0
-  fi
-
-  if ! command -v curl >/dev/null 2>&1; then
-    fail "bun is required but curl is not installed to auto-install it"
-    return 1
-  fi
-
-  warn "bun not found — installing Bun runtime..."
-  if ! curl -fsSL "https://bun.sh/install" | bash >/dev/null 2>&1; then
-    fail "Failed to install bun automatically"
-    return 1
-  fi
-
-  export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"
-  export PATH="${BUN_INSTALL}/bin:${PATH}"
-
-  if ! command -v bun >/dev/null 2>&1; then
-    fail "bun install completed but bun is still not on PATH"
-    fail "Try: export PATH=\"$HOME/.bun/bin:$PATH\""
-    return 1
-  fi
-
-  ok "bun $(bun --version)"
-}
-
 get_instance_public_ipv4() {
   local token=""
   local ip=""
@@ -289,10 +261,6 @@ step 1 "Preflight checks"
 MISSING=()
 
 if ! install_missing_system_prereqs; then
-  exit 1
-fi
-
-if ! ensure_bun_installed; then
   exit 1
 fi
 

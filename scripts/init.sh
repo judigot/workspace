@@ -198,9 +198,13 @@ domain_points_to_ip() {
 ensure_dns_ready_for_certbot() {
   local expected_ip=""
   local domains=("$DOMAIN" "$WWW_DOMAIN" "$OPENCODE_SUBDOMAIN")
+  local mismatch_domains=()
+  local mismatch_ips=()
   local pending=0
   local domain=""
   local ips=""
+  local observed=""
+  local i=0
 
   expected_ip=$(get_instance_public_ipv4)
   if [ -z "$expected_ip" ]; then
@@ -208,23 +212,21 @@ ensure_dns_ready_for_certbot() {
     return 0
   fi
 
-  ok "Detected instance public IPv4: ${expected_ip}"
+  ok "Instance public IPv4 detected: ${expected_ip}"
 
   while true; do
     pending=0
+    mismatch_domains=()
+    mismatch_ips=()
 
     for domain in "${domains[@]}"; do
       ips=$(get_domain_ipv4s "$domain")
 
-      if domain_points_to_ip "$domain" "$expected_ip"; then
-        ok "DNS ${domain} -> ${ips}"
-      else
+      if ! domain_points_to_ip "$domain" "$expected_ip"; then
         pending=1
-        if [ -z "$ips" ]; then
-          warn "DNS ${domain} -> (no A record found)"
-        else
-          warn "DNS ${domain} -> ${ips} (expected ${expected_ip})"
-        fi
+        observed=${ips:-"(no A record found)"}
+        mismatch_domains+=("$domain")
+        mismatch_ips+=("$observed")
       fi
     done
 
@@ -233,14 +235,26 @@ ensure_dns_ready_for_certbot() {
       return 0
     fi
 
+    printf '\n'
+    yellow "  DNS mismatch (update required):"
+    for i in "${!mismatch_domains[@]}"; do
+      printf '    • %-22s resolves to %s  -> expected %s\n' \
+        "${mismatch_domains[$i]}" "${mismatch_ips[$i]}" "$expected_ip"
+    done
+
+    printf '\n'
+    printf '  Next steps:\n'
+    printf '    1) Update the A/AAAA records (or CNAME where applicable) to point to %s\n' "$expected_ip"
+    printf '    2) Wait a few minutes for DNS propagation\n'
+
     if [ ! -t 0 ]; then
       fail "DNS is not pointed to this instance yet"
       fail "Set A records for ${DOMAIN}, ${WWW_DOMAIN}, ${OPENCODE_SUBDOMAIN} to ${expected_ip}"
       return 1
     fi
 
-    warn "Update DNS records, then press Enter to retry"
-    printf '  Retry DNS check (Ctrl+C to abort): '
+    printf '\n'
+    printf '  Press Enter to retry DNS check, or Ctrl+C to cancel: '
     read -r _
   done
 }

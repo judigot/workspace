@@ -128,6 +128,146 @@ install_missing_system_prereqs() {
   ok "Installed missing system prerequisites"
 }
 
+ensure_bun_installed() {
+  if command -v bun >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if ! command -v curl >/dev/null 2>&1; then
+    fail "bun is required but curl is not installed to auto-install it"
+    return 1
+  fi
+
+  warn "bun not found — installing Bun runtime..."
+  if ! curl -fsSL "https://bun.sh/install" | bash >/dev/null 2>&1; then
+    fail "Failed to install bun automatically"
+    return 1
+  fi
+
+  export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"
+  export PATH="${BUN_INSTALL}/bin:${PATH}"
+
+  if ! command -v bun >/dev/null 2>&1; then
+    fail "bun install completed but bun is still not on PATH"
+    fail "Try: export PATH=\"$HOME/.bun/bin:$PATH\""
+    return 1
+  fi
+
+  ok "bun $(bun --version)"
+}
+
+get_instance_public_ipv4() {
+  local token=""
+  local ip=""
+
+  token=$(curl -fsS --max-time 2 -X PUT \
+    "http://169.254.169.254/latest/api/token" \
+    -H "X-aws-ec2-metadata-token-ttl-seconds: 60" 2>/dev/null || true)
+
+  if [ -n "$token" ]; then
+    ip=$(curl -fsS --max-time 2 \
+      -H "X-aws-ec2-metadata-token: ${token}" \
+      "http://169.254.169.254/latest/meta-data/public-ipv4" 2>/dev/null || true)
+  else
+    ip=$(curl -fsS --max-time 2 \
+      "http://169.254.169.254/latest/meta-data/public-ipv4" 2>/dev/null || true)
+  fi
+
+  if [ -z "$ip" ]; then
+    ip=$(curl -fsS --max-time 3 "https://api.ipify.org" 2>/dev/null || true)
+  fi
+
+  if [ -z "$ip" ]; then
+    ip=$(curl -fsS --max-time 3 "https://ifconfig.me/ip" 2>/dev/null || true)
+  fi
+
+  printf '%s' "$ip"
+}
+
+get_domain_ipv4s() {
+  local domain="$1"
+  local ips=()
+  local ip=""
+
+  while IFS=' ' read -r ip _; do
+    [ -n "$ip" ] || continue
+    case " ${ips[*]} " in
+      *" ${ip} "*) ;;
+      *) ips+=("$ip") ;;
+    esac
+  done < <(getent ahostsv4 "$domain" 2>/dev/null || true)
+
+  printf '%s' "${ips[*]}"
+}
+
+domain_points_to_ip() {
+  local domain="$1"
+  local expected_ip="$2"
+  local ip=""
+  local ips
+
+  ips=$(get_domain_ipv4s "$domain")
+  [ -n "$ips" ] || return 1
+
+  for ip in $ips; do
+    if [ "$ip" = "$expected_ip" ]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+ensure_dns_ready_for_certbot() {
+  local expected_ip=""
+  local domains=("$DOMAIN" "$WWW_DOMAIN" "$OPENCODE_SUBDOMAIN")
+  local pending=0
+  local domain=""
+  local ips=""
+
+  expected_ip=$(get_instance_public_ipv4)
+  if [ -z "$expected_ip" ]; then
+    warn "Could not auto-detect this instance public IPv4; skipping DNS pre-check"
+    return 0
+  fi
+
+  ok "Detected instance public IPv4: ${expected_ip}"
+
+  while true; do
+    pending=0
+
+    for domain in "${domains[@]}"; do
+      ips=$(get_domain_ipv4s "$domain")
+
+      if domain_points_to_ip "$domain" "$expected_ip"; then
+        ok "DNS ${domain} -> ${ips}"
+      else
+        pending=1
+        if [ -z "$ips" ]; then
+          warn "DNS ${domain} -> (no A record found)"
+        else
+          warn "DNS ${domain} -> ${ips} (expected ${expected_ip})"
+        fi
+      fi
+    done
+
+    if [ "$pending" -eq 0 ]; then
+      ok "All certificate domains point to this instance"
+      return 0
+    fi
+
+    if [ ! -t 0 ]; then
+      fail "DNS is not pointed to this instance yet"
+      fail "Set A records for ${DOMAIN}, ${WWW_DOMAIN}, ${OPENCODE_SUBDOMAIN} to ${expected_ip}"
+      return 1
+    fi
+
+    warn "Update DNS records, then press Enter to retry"
+    printf '  Retry DNS check (Ctrl+C to abort): '
+    read -r _
+  done
+}
+
 # ─── Load existing .env if present ────────────────────────────────────────────
 
 if [ -f "$ENV_FILE" ]; then
@@ -147,7 +287,11 @@ if ! install_missing_system_prereqs; then
   exit 1
 fi
 
-for cmd in nginx certbot node npm; do
+if ! ensure_bun_installed; then
+  exit 1
+fi
+
+for cmd in nginx certbot node npm bun; do
   if command -v "$cmd" >/dev/null 2>&1; then
     ok "$cmd $(${cmd} --version 2>&1 | head -1 | grep -oE '[0-9]+\.[0-9]+[.0-9]*' | head -1)"
   else
@@ -245,6 +389,7 @@ ALL_DOMAINS="${DOMAIN},${WWW_DOMAIN},${OPENCODE_SUBDOMAIN}"
 if sudo test -f "$SSL_CERT" && sudo test -f "$SSL_KEY"; then
   ok "Certs already exist — skipping certbot"
 else
+  ensure_dns_ready_for_certbot
   warn "No certs found — issuing via certbot..."
   sudo systemctl stop nginx 2>/dev/null || true
   sudo certbot certonly --standalone \

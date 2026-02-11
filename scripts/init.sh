@@ -82,6 +82,52 @@ prompt_secret() {
 
 TOTAL_STEPS=6
 
+install_missing_system_prereqs() {
+  local missing=()
+
+  if ! command -v nginx >/dev/null 2>&1; then
+    missing+=("nginx")
+  fi
+
+  if ! command -v certbot >/dev/null 2>&1; then
+    missing+=("certbot" "python3-certbot-nginx")
+  fi
+
+  if [ ${#missing[@]} -eq 0 ]; then
+    return 0
+  fi
+
+  if ! command -v apt-get >/dev/null 2>&1; then
+    fail "Missing system prerequisites: ${missing[*]}"
+    fail "apt-get is not available, so auto-install cannot run"
+    return 1
+  fi
+
+  local installer=""
+  if [ "$(id -u)" -eq 0 ]; then
+    installer=""
+  elif command -v sudo >/dev/null 2>&1; then
+    installer="sudo"
+  else
+    fail "Missing system prerequisites: ${missing[*]}"
+    fail "sudo is required to auto-install system packages"
+    return 1
+  fi
+
+  warn "Missing system packages detected: ${missing[*]}"
+  warn "Installing via apt-get (idempotent)..."
+
+  if [ -n "$installer" ]; then
+    $installer apt-get update -y
+    $installer apt-get install -y "${missing[@]}"
+  else
+    apt-get update -y
+    apt-get install -y "${missing[@]}"
+  fi
+
+  ok "Installed missing system prerequisites"
+}
+
 # ─── Load existing .env if present ────────────────────────────────────────────
 
 if [ -f "$ENV_FILE" ]; then
@@ -96,6 +142,10 @@ fi
 step 1 "Preflight checks"
 
 MISSING=()
+
+if ! install_missing_system_prereqs; then
+  exit 1
+fi
 
 for cmd in nginx certbot node npm; do
   if command -v "$cmd" >/dev/null 2>&1; then

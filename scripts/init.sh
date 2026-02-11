@@ -406,6 +406,8 @@ ok "Nginx config deployed and reloaded"
 step 5 "OpenCode service"
 
 NODE_BIN=$(dirname "$(command -v node)")
+BUN_PATH=$(command -v bun)
+BUN_BIN=$(dirname "${BUN_PATH}")
 
 SERVICE_FILE="/etc/systemd/system/opencode.service"
 
@@ -509,10 +511,10 @@ After=network.target
 [Service]
 Type=simple
 User=$(whoami)
-Environment="PATH=${NODE_BIN}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PATH=${NODE_BIN}:${BUN_BIN}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Environment="DASHBOARD_API_PORT=${DASHBOARD_API_PORT}"
 Environment="WORKSPACE_ENV_PATH=${ROOT_DIR}/.env"
-ExecStart=${NODE_BIN}/bunx tsx ${DASHBOARD_DIR}/apps/workspace/src/server/index.ts
+ExecStart=${BUN_PATH} x tsx ${DASHBOARD_DIR}/apps/workspace/src/server/index.ts
 Restart=always
 RestartSec=5
 WorkingDirectory=${DASHBOARD_DIR}/apps/workspace
@@ -531,9 +533,9 @@ After=network.target dashboard-api.service
 [Service]
 Type=simple
 User=$(whoami)
-Environment="PATH=${NODE_BIN}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PATH=${NODE_BIN}:${BUN_BIN}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Environment="DASHBOARD_API_PORT=${DASHBOARD_API_PORT}"
-ExecStart=${NODE_BIN}/bunx vite --host 127.0.0.1 --port ${DASHBOARD_PORT}
+ExecStart=${BUN_PATH} x vite --host 127.0.0.1 --port ${DASHBOARD_PORT}
 Restart=always
 RestartSec=5
 WorkingDirectory=${DASHBOARD_DIR}/apps/workspace
@@ -557,7 +559,8 @@ for i in $(seq 1 30); do
   sleep 1
   if [ "$i" -eq 30 ]; then
     printf '\n'
-    warn "Dashboard did not respond within 30s — check: sudo journalctl -u dashboard-vite -n 20"
+    fail "Dashboard did not respond within 30s — check: sudo journalctl -u dashboard-vite -n 20"
+    exit 1
   fi
 done
 
